@@ -306,7 +306,7 @@ class CCMerger:
         
         # INCC subrecord (Compiler version - optional but helpful)
         incc_data = bytearray()
-        compiler_version = b'CC-Packer v1.0.1'
+        compiler_version = b'CC-Packer v1.0.2'
         incc_data.extend(b'INCC')
         incc_data.extend(len(compiler_version).to_bytes(2, 'little'))
         incc_data.extend(compiler_version)
