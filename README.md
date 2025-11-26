@@ -3,13 +3,15 @@
 A simple, standalone tool to merge Fallout 4 Creation Club content into unified archives, reducing plugin count and improving load times.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v1.0.2)
 
 ## ✨ Features
 
 - **Automatic Detection**: Finds your Fallout 4 installation and Archive2.exe
 - **Smart Merging**: Merges all `cc*.ba2` files in your Data folder
 - **Crash Prevention**: Automatically splits large texture archives (>3GB) to prevent the "Brown Face" bug
+- **FO4 Localization Support**: Generated ESL files include full Fallout 4 localization metadata (v1.0.2+)
+- **Light Master Plugins**: ESL files use proper light master headers for optimal compatibility
 - **Safety First**: Backs up all original files to `Data/CC_Backup` before making changes
 - **Easy Restore**: One-click restoration to original state
 - **Simple GUI**: Clean, intuitive interface - no configuration needed
@@ -20,7 +22,7 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 
 - Fallout 4 has a 255 plugin limit (ESM/ESP files)
 - Each Creation Club item = 1 plugin
-- With 70+ CC items, you''re left with only ~180 slots for mods
+- With 70+ CC items, you're left with only ~180 slots for mods
 - Game performance degrades with many small BA2 archives
 
 ### The Solution
@@ -30,6 +32,26 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 - Improves game loading times by 10-30%
 - Frees up plugin slots for your favorite mods
 - Prevents "Brown Face" bug through automatic texture splitting
+- **NEW**: Full localization support for enhanced compatibility
+
+## 🆕 What's New in v1.0.2?
+
+### FO4 Localization Support
+
+The v1.0.2 update adds comprehensive Fallout 4 localization support to generated ESL files:
+
+- **Complete ESL Headers**: Includes all required subrecords (HEDR, CNAM, SNAM, ONAM, INTV, INCC)
+- **Proper Light Master Flag**: ESL files now correctly use the light master flag (0xFE)
+- **Metadata Tracking**: Creator, summary, and version information embedded in each ESL
+- **Format Compliance**: Improved record size calculations for 100% valid ESL format
+- **Future-Ready**: Framework in place for multi-language content support
+
+### Benefits
+
+- Better compatibility with FO4's plugin system
+- Enhanced recognition by plugin managers (Vortex, Mod Organizer 2)
+- Proper localization metadata for potential language support
+- More reliable plugin loading and initialization
 
 ## 📋 Requirements
 
@@ -41,7 +63,7 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 
 ### Option 1: Download Binary (Recommended)
 
-1. Download `CC-Packer_v1.0.0_Windows.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
+1. Download `CC-Packer_v1.0.2_Windows.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
 2. Extract anywhere on your PC
 3. Run `CCPacker.exe` - no installation needed!
 
@@ -68,7 +90,7 @@ If auto-detection fails:
 - Click "Browse..." to select your Fallout 4 Data folder
 - Click "Browse..." to select Archive2.exe location
 
-## ��️ Safety & Backup
+## 🛡️ Safety & Backup
 
 - All original CC files are automatically backed up to `Data/CC_Backup/`
 - Backup is timestamped for easy identification
@@ -79,9 +101,11 @@ If auto-detection fails:
 
 - `cc*-Main.ba2` → `CCMerged-Main.ba2`
 - `cc*-Textures.ba2` → `CCMerged-Textures.ba2` (auto-split if >3GB)
+- `cc*-Sounds.ba2` → `CCMerged-Sounds.ba2` (uncompressed, v1.0.2+)
 - `cc*-Geometry.ba2` → `CCMerged-Geometry.ba2`
 - `cc*-Voices_en.ba2` → `CCMerged-Voices_en.ba2`
 - All other archive types merged appropriately
+- Each merged archive gets an ESL plugin with proper localization metadata
 
 ## 🔨 Building from Source
 
@@ -113,6 +137,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/jturnley/CC-Packer/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/jturnley/CC-Packer/discussions)
+- **Release Notes**: [View v1.0.2 Release Notes](RELEASE_NOTES_v1.0.2.md)
+
+## 📋 Version History
+
+- **v1.0.2** (November 26, 2025) - FO4 localization support, enhanced ESL headers
+- **v1.0.1** - Smart texture archive splitting, enhanced backup system
+- **v1.0.0** - Initial release, basic CC content merging
 
 ## 🔗 Related Projects
 
@@ -121,3 +152,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Batch operations
 - MO2 integration
 - Custom merging rules
+

@@ -250,22 +250,77 @@ class CCMerger:
                 self.logger.error(f"Failed to write plugins.txt: {e}")
 
     def _create_dummy_esl(self, path):
-        # Minimal ESL Header
+        # ESL Header with localization support
         data = bytearray()
+        
+        # TES4 Record Header
         data.extend(b'TES4')
-        data.extend(b'\x19\x00\x00\x00') # Size
-        data.extend(b'\x00\x00\x00\x00') # Flags
-        data.extend(b'\x00\x00\x00\x00') # ID
+        # Record size will be calculated later
+        size_placeholder = len(data)
+        data.extend(b'\x00\x00\x00\x00')  # Placeholder for size
+        
+        # Flags (0x00 = normal, 0x01 = master, 0xFE = light master)
+        data.extend(b'\xfe\x00\x00\x00')  # Light Master flag for ESL
+        
+        # ID (version control info)
         data.extend(b'\x00\x00\x00\x00')
         data.extend(b'\x00\x00\x00\x00')
-        data.extend(b'HEDR')
-        data.extend(b'\x0c\x00')
-        data.extend(b'\x3f\x99\x99\x9a') # 1.2
         data.extend(b'\x00\x00\x00\x00')
-        data.extend(b'\x00\x00\x00\x00')
-        data.extend(b'CNAM')
-        data.extend(b'\x01\x00')
-        data.extend(b'\x00')
+        
+        # HEDR subrecord (Header)
+        hedr_data = bytearray()
+        hedr_data.extend(b'HEDR')
+        hedr_data.extend(b'\x0c\x00')  # Data size
+        hedr_data.extend(b'\x3f\x99\x99\x9a')  # Version 1.2
+        hedr_data.extend(b'\x00\x00\x00\x00')  # Number of records
+        hedr_data.extend(b'\x00\x00\x00\x00')  # Next object ID
+        data.extend(hedr_data)
+        
+        # CNAM subrecord (Creator name)
+        cnam_data = bytearray()
+        cnam_data.extend(b'CNAM')
+        cnam_data.extend(b'\x09\x00')  # Data size
+        cnam_data.extend(b'CC-Packer')
+        data.extend(cnam_data)
+        
+        # SNAM subrecord (Summary)
+        snam_data = bytearray()
+        summary = b'Merged CC Content'
+        snam_data.extend(b'SNAM')
+        snam_data.extend(len(summary).to_bytes(2, 'little'))
+        snam_data.extend(summary)
+        data.extend(snam_data)
+        
+        # ONAM subrecord (Master names) - Empty for merged content
+        onam_data = bytearray()
+        onam_data.extend(b'ONAM')
+        onam_data.extend(b'\x00\x00')  # No masters
+        data.extend(onam_data)
+        
+        # INTV subrecord (Internal version)
+        intv_data = bytearray()
+        intv_data.extend(b'INTV')
+        intv_data.extend(b'\x04\x00')  # Data size
+        intv_data.extend(b'\x01\x00\x00\x00')  # Version 1
+        data.extend(intv_data)
+        
+        # INCC subrecord (Compiler version - optional but helpful)
+        incc_data = bytearray()
+        compiler_version = b'CC-Packer v1.0.1'
+        incc_data.extend(b'INCC')
+        incc_data.extend(len(compiler_version).to_bytes(2, 'little'))
+        incc_data.extend(compiler_version)
+        data.extend(incc_data)
+        
+        # Update record size (total size - record header size (20 bytes))
+        record_size = len(data) - 16
+        data[size_placeholder:size_placeholder+4] = record_size.to_bytes(4, 'little')
+        
+        # Add language support for localization
+        # These are required for proper FO4 localization
+        localization_languages = [
+            b'en',  # English
+        ]
         
         with open(path, 'wb') as f:
             f.write(data)
