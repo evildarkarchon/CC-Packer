@@ -116,30 +116,104 @@ class MainWindow(QMainWindow):
         self.restore_btn.setEnabled(False)
 
     def _check_existing_backup(self, fo4_path):
-        """Check if a backup already exists and prompt user for confirmation.
+        """Check for existing backups and CC file states.
         
         Returns:
-            True if user wants to continue with merge
-            False if user cancels
+            dict with keys:
+                - 'has_ccmerged': bool - If CCMerged files exist
+                - 'has_other_cc': bool - If other cc*.ba2 files exist (excluding CCMerged)
+                - 'backup_count': int - Number of existing backups
+                - 'ccmerged_files': list - Names of CCMerged files found
+                - 'other_cc_files': list - Names of other CC files found
         """
         from pathlib import Path
         data_path = Path(fo4_path) / "Data"
         backup_dir = data_path / "CC_Backup"
         
+        # Get all cc*.ba2 files
+        all_cc_files = list(data_path.glob("cc*.ba2"))
+        
+        # Separate into CCMerged and other
+        ccmerged_files = [f.name for f in all_cc_files if f.name.lower().startswith("ccmerged")]
+        other_cc_files = [f.name for f in all_cc_files if not f.name.lower().startswith("ccmerged")]
+        
+        # Count backups
+        backup_count = 0
         if backup_dir.exists():
             backup_count = len([d for d in backup_dir.iterdir() if d.is_dir()])
-            if backup_count > 0:
-                reply = QMessageBox.question(
-                    self, 
-                    "Backup Already Exists",
-                    f"Found {backup_count} existing backup(s) in:\n{backup_dir}\n\n"
-                    "A new backup will be created for this merge.\n"
-                    "Your original CC files are still protected.\n\n"
-                    "Continue with merge?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.Yes
-                )
-                return reply == QMessageBox.StandardButton.Yes
+        
+        return {
+            'has_ccmerged': len(ccmerged_files) > 0,
+            'has_other_cc': len(other_cc_files) > 0,
+            'backup_count': backup_count,
+            'ccmerged_files': ccmerged_files,
+            'other_cc_files': other_cc_files
+        }
+
+    def _show_merge_status(self, fo4_path):
+        """Display the current merge/backup status and update button states."""
+        status = self._check_existing_backup(fo4_path)
+        
+        # Build status message for log
+        if status['has_ccmerged']:
+            merged_count = len(status['ccmerged_files'])
+            self.log(f"Found {merged_count} merged archive(s): {', '.join(status['ccmerged_files'][:2])}")
+            if merged_count > 2:
+                self.log(f"  ... and {merged_count - 2} more")
+        
+        if status['has_other_cc']:
+            other_count = len(status['other_cc_files'])
+            self.log(f"Found {other_count} unmerged CC file(s)")
+        
+        if status['backup_count'] > 0:
+            self.log(f"Found {status['backup_count']} backup(s)")
+        
+        # Determine merge button state
+        if status['has_ccmerged'] and not status['has_other_cc']:
+            # Only merged files - can't merge
+            self.merge_btn.setEnabled(False)
+            self.merge_btn.setToolTip("All Creation Club files are already merged.\nRestore backup to merge additional files.")
+            self.log("⚠ All CC files are merged. Use 'Restore Backup' to add more files.")
+        elif status['has_ccmerged'] and status['has_other_cc']:
+            # Mixed - can merge but should restore first
+            self.merge_btn.setEnabled(True)
+            self.merge_btn.setToolTip("Unmerged CC files detected alongside merged files.\nConsider restoring backup first.")
+            self.log("⚠ Mixed merged and unmerged files detected!")
+        else:
+            # No merged files - normal state
+            self.merge_btn.setEnabled(True)
+            self.merge_btn.setToolTip("Merge Creation Club files")
+        
+        # Restore button state
+        if status['backup_count'] > 0:
+            self.restore_btn.setEnabled(True)
+        else:
+            self.restore_btn.setEnabled(False)
+            self.restore_btn.setToolTip("No backups available")
+
+    def _handle_merge_with_mixed_files(self, fo4_path):
+        """Handle merge attempt when both CCMerged and other CC files exist.
+        
+        Returns:
+            True if user wants to continue with merge
+            False if user cancels
+        """
+        status = self._check_existing_backup(fo4_path)
+        
+        if status['has_ccmerged'] and status['has_other_cc']:
+            reply = QMessageBox.warning(
+                self,
+                "Merged Files Already Exist",
+                f"Found {len(status['ccmerged_files'])} merged archive(s) and "
+                f"{len(status['other_cc_files'])} unmerged CC file(s).\n\n"
+                "This will create new merged archives.\n"
+                "It is recommended to RESTORE your backup first,\n"
+                "then merge all files together.\n\n"
+                "Continue anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            return reply == QMessageBox.StandardButton.Yes
         
         return True
 
@@ -156,6 +230,7 @@ class MainWindow(QMainWindow):
             if os.path.exists(path):
                 self.fo4_input.setText(path)
                 self.check_archive2(path)
+                self._show_merge_status(path)
                 break
 
     def check_archive2(self, fo4_path):
@@ -179,6 +254,7 @@ class MainWindow(QMainWindow):
         if path:
             self.fo4_input.setText(path)
             self.check_archive2(path)
+            self._show_merge_status(path)
 
     def browse_archive2(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select Archive2.exe", filter="Executables (*.exe)")
@@ -196,8 +272,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Invalid Archive2 path.")
             return
 
-        # Check if backup already exists and confirm with user
-        if not self._check_existing_backup(fo4):
+        # Check current state and handle appropriately
+        status = self._check_existing_backup(fo4)
+        
+        # Case 1: Only merged files exist - can't merge
+        if status['has_ccmerged'] and not status['has_other_cc']:
+            QMessageBox.information(
+                self,
+                "All Files Merged",
+                "All Creation Club files are already merged.\n\n"
+                "To merge additional CC files:\n"
+                "1. Click 'Restore Backup'\n"
+                "2. Add new CC files to Data folder\n"
+                "3. Click 'Merge CC Content' again"
+            )
+            return
+        
+        # Case 2: Mixed merged and unmerged files - warn user
+        if not self._handle_merge_with_mixed_files(fo4):
             self.log("Merge cancelled by user.")
             return
 
