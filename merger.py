@@ -465,21 +465,22 @@ class CCMerger:
         progress_callback("STRINGS files moved to Data/Strings.")
 
         # 9. Verify archive integrity before proceeding
-        progress_callback("Verifying archive integrity...")
-        verification_failed = []
-        for archive_path in created_archives:
-            is_valid, message = self.verify_ba2_integrity(archive_path, archive2_path, progress_callback)
-            if is_valid:
-                progress_callback(f"  ✓ {message}")
-            else:
-                progress_callback(f"  ✗ {message}")
-                verification_failed.append(message)
-        
-        if verification_failed:
-            error_msg = "Archive verification failed:\n" + "\n".join(verification_failed)
-            return {"success": False, "error": error_msg}
-        
-        progress_callback(f"All {len(created_archives)} archives verified successfully.")
+        # NOTE: Archive validation disabled - was causing issues with some BA2 versions
+        # progress_callback("Verifying archive integrity...")
+        # verification_failed = []
+        # for archive_path in created_archives:
+        #     is_valid, message = self.verify_ba2_integrity(archive_path, archive2_path, progress_callback)
+        #     if is_valid:
+        #         progress_callback(f"  ✓ {message}")
+        #     else:
+        #         progress_callback(f"  ✗ {message}")
+        #         verification_failed.append(message)
+        # 
+        # if verification_failed:
+        #     error_msg = "Archive verification failed:\n" + "\n".join(verification_failed)
+        #     return {"success": False, "error": error_msg}
+        # 
+        # progress_callback(f"All {len(created_archives)} archives verified successfully.")
 
         # 10. Add to plugins.txt
         progress_callback("Enabling plugins...")

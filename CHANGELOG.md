@@ -5,6 +5,18 @@ All notable changes to CC-Packer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-11-29
+
+### Changed
+
+- **Disabled Archive Validation** - Temporarily disabled the BA2 archive verification step after merge completion. This resolves issues where the validation was incorrectly rejecting valid archives created by Archive2.exe. The merge process now completes without the verification check.
+
+### Technical Details
+
+- Commented out the `verify_ba2_integrity()` call in the merge workflow
+- The verification method remains in the codebase for future use
+- Archive2.exe output is still checked for errors during extraction/creation
+
 ## [1.0.4] - 2025-11-28
 
 ### Improved
