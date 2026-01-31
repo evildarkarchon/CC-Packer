@@ -141,7 +141,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Bethesda for Fallout 4 and the Creation Kit
 - The Fallout 4 modding community for testing and feedback
-- **[zilav, ElminsterAU, Sheson](https://github.com/TES5Edit/TES5Edit)** - Authors of [BSArch](https://www.nexusmods.com/fallout4/mods/78243), the archive tool bundled with CC-Packer (v2.0+). BSArch is part of the [xEdit](https://github.com/TES5Edit/TES5Edit) project and is licensed under MPL 2.0.
+- **[zilav, ElminsterAU, Sheson](https://github.com/TES5Edit/TES5Edit)** - Authors of [BSArch](https://www.nexusmods.com/newvegas/mods/64745), the archive tool bundled with CC-Packer (v2.0+). BSArch is part of the [xEdit](https://github.com/TES5Edit/TES5Edit) project and is licensed under MPL 2.0.
 - **[MGuffin](https://github.com/MGuffin)** - Author of [xTranslator](https://github.com/MGuffin/xTranslator), whose open-source work on Bethesda plugin translation tools helped us understand the STRINGS file format specification used for localization support in CC-Packer (v1.0.3+). xTranslator is an invaluable tool for the modding community.
 
 ## 📞 Support

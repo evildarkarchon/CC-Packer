@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Details
 
-- Integrated [BSArch](https://www.nexusmods.com/fallout4/mods/78243) v1.0 x64 by zilav, ElminsterAU, and Sheson
+- Integrated [BSArch](https://www.nexusmods.com/newvegas/mods/64745) v1.0 x64 by zilav, ElminsterAU, and Sheson
 - BSArch is part of the [xEdit](https://github.com/TES5Edit/TES5Edit) project (MPL 2.0 licensed)
 - Pack operations now use working directory control for correct path resolution
 - Output paths resolved to absolute before packing
