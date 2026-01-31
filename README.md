@@ -141,16 +141,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Bethesda for Fallout 4 and the Creation Kit
 - The Fallout 4 modding community for testing and feedback
+- **[zilav, ElminsterAU, Sheson](https://github.com/TES5Edit/TES5Edit)** - Authors of [BSArch](https://www.nexusmods.com/fallout4/mods/78243), the archive tool bundled with CC-Packer (v2.0+). BSArch is part of the [xEdit](https://github.com/TES5Edit/TES5Edit) project and is licensed under MPL 2.0.
 - **[MGuffin](https://github.com/MGuffin)** - Author of [xTranslator](https://github.com/MGuffin/xTranslator), whose open-source work on Bethesda plugin translation tools helped us understand the STRINGS file format specification used for localization support in CC-Packer (v1.0.3+). xTranslator is an invaluable tool for the modding community.
 
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/jturnley/CC-Packer/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/jturnley/CC-Packer/discussions)
-- **Release Notes**: [View v1.0.6 Release Notes](RELEASE_NOTES_v1.0.6.md)
+- **Release Notes**: [View v2.0 Release Notes](RELEASE_NOTES_v2.0.md)
 
 ## 📋 Version History
 
+- **v2.0** (January 30, 2026) - Standalone operation with bundled BSArch, no more Archive2/Creation Kit requirement
 - **v1.0.6** (November 29, 2025) - Fixed texture archives not loading (each texture archive now gets its own ESL)
 - **v1.0.5** (November 29, 2025) - Disabled post-merge archive validation
 - **v1.0.4** (November 28, 2025) - Enhanced BA2 validation error messages

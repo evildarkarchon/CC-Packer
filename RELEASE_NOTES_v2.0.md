@@ -27,10 +27,16 @@ Version 2.0 is a major refactor that eliminates the Archive2.exe dependency, mak
 
 ## 🔧 Technical Improvements
 
-- **BSArch Integration**: Full integration with bsarch.exe v1.0 x64 (MPL 2.0 licensed)
+- **BSArch Integration**: Full integration with [BSArch](https://www.nexusmods.com/fallout4/mods/78243) v1.0 x64 (MPL 2.0 licensed)
 - **Fixed Archive Paths**: Resolved issue where files were stored with incorrect path prefixes
 - **Working Directory Control**: Pack operations now use correct cwd for proper path resolution
 - **Absolute Path Resolution**: Output paths resolved to absolute before packing
+
+## 🙏 Credits
+
+- **[zilav, ElminsterAU, Sheson](https://github.com/TES5Edit/TES5Edit)** - Authors of BSArch, the archive tool bundled with CC-Packer
+- BSArch is part of the [xEdit](https://github.com/TES5Edit/TES5Edit) project
+- Download BSArch standalone: [Nexus Mods](https://www.nexusmods.com/fallout4/mods/78243)
 
 ## 📦 What's Included
 
