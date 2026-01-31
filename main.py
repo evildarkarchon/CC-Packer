@@ -1,7 +1,6 @@
 import sys
 import os
 import logging
-import webbrowser
 import ctypes
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
@@ -13,15 +12,14 @@ class MergeWorker(QThread):
     progress = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, merger, fo4_path, archive2_path):
+    def __init__(self, merger, fo4_path):
         super().__init__()
         self.merger = merger
         self.fo4_path = fo4_path
-        self.archive2_path = archive2_path
 
     def run(self):
         try:
-            result = self.merger.merge_cc_content(self.fo4_path, self.archive2_path, self.progress.emit)
+            result = self.merger.merge_cc_content(self.fo4_path, self.progress.emit)
             if result['success']:
                 self.finished.emit(True, "Merge completed successfully!")
             else:
@@ -56,7 +54,7 @@ class MainWindow(QMainWindow):
         self.detect_paths()
 
     def init_ui(self):
-        self.setWindowTitle("CC Packer v1.0.6")
+        self.setWindowTitle("CC Packer v2.0")
         self.setMinimumSize(600, 500)
 
         central_widget = QWidget()
@@ -78,16 +76,6 @@ class MainWindow(QMainWindow):
         fo4_layout.addWidget(self.fo4_input)
         fo4_layout.addWidget(fo4_btn)
         layout.addLayout(fo4_layout)
-
-        # Archive2 Path
-        layout.addWidget(QLabel("Archive2.exe Path:"))
-        a2_layout = QHBoxLayout()
-        self.a2_input = QLineEdit()
-        a2_btn = QPushButton("Browse")
-        a2_btn.clicked.connect(self.browse_archive2)
-        a2_layout.addWidget(self.a2_input)
-        a2_layout.addWidget(a2_btn)
-        layout.addLayout(a2_layout)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -262,49 +250,22 @@ class MainWindow(QMainWindow):
         for path in common_paths:
             if os.path.exists(path):
                 self.fo4_input.setText(path)
-                self.check_archive2(path)
                 self._show_merge_status(path)
                 self._check_elevation_needed(path)
                 break
-
-    def check_archive2(self, fo4_path):
-        # Check default location
-        default_a2 = os.path.join(fo4_path, "Tools", "Archive2", "Archive2.exe")
-        if os.path.exists(default_a2):
-            self.a2_input.setText(default_a2)
-            self.log("Archive2.exe found automatically.")
-        else:
-            self.log("Archive2.exe not found in default location.")
-            reply = QMessageBox.question(self, "Archive2 Missing", 
-                                       "Archive2.exe was not found in the default location.\n\n"
-                                       "It is required to pack BA2 files. It comes with the Creation Kit.\n\n"
-                                       "Would you like to open the Steam page for the Creation Kit?",
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.Yes:
-                webbrowser.open("steam://install/1946160")
 
     def browse_fo4(self):
         path = QFileDialog.getExistingDirectory(self, "Select Fallout 4 Directory")
         if path:
             self.fo4_input.setText(path)
-            self.check_archive2(path)
             self._show_merge_status(path)
             self._check_elevation_needed(path)
 
-    def browse_archive2(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Archive2.exe", filter="Executables (*.exe)")
-        if path:
-            self.a2_input.setText(path)
-
     def start_merge(self):
         fo4 = self.fo4_input.text()
-        a2 = self.a2_input.text()
 
         if not fo4 or not os.path.exists(fo4):
             QMessageBox.warning(self, "Error", "Invalid Fallout 4 path.")
-            return
-        if not a2 or not os.path.exists(a2):
-            QMessageBox.warning(self, "Error", "Invalid Archive2 path.")
             return
 
         # Check current state and handle appropriately
@@ -331,7 +292,7 @@ class MainWindow(QMainWindow):
         self._disable_buttons()
         self.log("Starting merge process...")
         
-        self.worker = MergeWorker(self.merger, fo4, a2)
+        self.worker = MergeWorker(self.merger, fo4)
         self.worker.progress.connect(self.log)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()

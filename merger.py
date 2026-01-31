@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import logging
 import struct
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable, Dict, Any, List, Tuple
@@ -11,8 +12,8 @@ from typing import Optional, Callable, Dict, Any, List, Tuple
 # inside the merged BA2 archives, and our ESL placeholder doesn't need localization.
 
 
-class Archive2Error(Exception):
-    """Custom exception for Archive2 operations with detailed error info."""
+class BSArchError(Exception):
+    """Custom exception for BSArch operations with detailed error info."""
     def __init__(self, message: str, operation: str, archive_path: str = None, 
                  return_code: int = None, stdout: str = None, stderr: str = None):
         self.operation = operation
@@ -22,7 +23,7 @@ class Archive2Error(Exception):
         self.stderr = stderr
         
         # Build detailed message
-        details = [f"Archive2 {operation} failed"]
+        details = [f"BSArch {operation} failed"]
         if archive_path:
             details.append(f"Archive: {archive_path}")
         if return_code is not None:
@@ -42,38 +43,80 @@ class CCMerger:
         self.logger = logging.getLogger("CCPacker")
         logging.basicConfig(level=logging.INFO)
         self._last_error_details = None  # Store detailed error info
+        self._bsarch_path = None  # Cache bsarch.exe path
 
-    def _run_archive2(self, archive2_path: str, args: List[str], operation: str, 
-                      archive_name: str = None, progress_callback: Callable = None) -> subprocess.CompletedProcess:
-        """Run Archive2.exe with comprehensive error handling.
+    def _find_bsarch(self) -> str:
+        """Find bsarch.exe bundled with the application.
+        
+        Returns:
+            Path to bsarch.exe
+            
+        Raises:
+            BSArchError if bsarch.exe is not found
+        """
+        if self._bsarch_path and os.path.exists(self._bsarch_path):
+            return self._bsarch_path
+        
+        # When running as a PyInstaller bundle, files are extracted to a temp directory
+        # sys._MEIPASS contains the path to that directory
+        if getattr(sys, 'frozen', False):
+            # Running as compiled exe
+            bundle_dir = getattr(sys, '_MEIPASS', Path(sys.executable).parent)
+        else:
+            # Running as script
+            bundle_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+        
+        possible_paths = [
+            Path(bundle_dir) / "bsarch.exe",  # PyInstaller bundle or same dir as script
+            Path(sys.executable).parent / "bsarch.exe",  # Same dir as exe
+            Path(".") / "bsarch.exe",  # Current directory
+        ]
+        
+        for p in possible_paths:
+            if p.exists():
+                self._bsarch_path = str(p.resolve())
+                return self._bsarch_path
+        
+        raise BSArchError(
+            message="bsarch.exe not found. It should be bundled with CC-Packer.",
+            operation="initialization"
+        )
+
+    def _run_bsarch(self, args: List[str], operation: str, 
+                    archive_name: str = None, progress_callback: Callable = None,
+                    timeout: int = 600) -> subprocess.CompletedProcess:
+        """Run bsarch.exe with comprehensive error handling.
         
         Args:
-            archive2_path: Path to Archive2.exe
-            args: Command line arguments for Archive2
-            operation: Description of operation (e.g., 'extract', 'create')
+            args: Command line arguments for bsarch
+            operation: Description of operation (e.g., 'unpack', 'pack')
             archive_name: Name of archive being processed (for error messages)
             progress_callback: Optional callback for progress messages
+            timeout: Timeout in seconds (default 10 minutes)
             
         Returns:
             CompletedProcess on success
             
         Raises:
-            Archive2Error: On any failure with detailed diagnostics
+            BSArchError: On any failure
         """
-        cmd = [archive2_path] + args
+        bsarch_path = self._find_bsarch()
+        cmd = [bsarch_path] + args
         
         try:
+            if progress_callback:
+                progress_callback(f"  Running: bsarch {' '.join(args[:3])}...")
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600  # 10 minute timeout for large archives
+                timeout=timeout
             )
             
             if result.returncode != 0:
-                # Parse common Archive2 errors
-                error_msg = self._parse_archive2_error(result.stderr, result.stdout, result.returncode)
-                raise Archive2Error(
+                error_msg = self._parse_bsarch_error(result.stderr, result.stdout, result.returncode)
+                raise BSArchError(
                     message=error_msg,
                     operation=operation,
                     archive_path=archive_name,
@@ -85,32 +128,32 @@ class CCMerger:
             return result
             
         except subprocess.TimeoutExpired:
-            raise Archive2Error(
-                message="Operation timed out after 10 minutes",
+            raise BSArchError(
+                message=f"Operation timed out after {timeout} seconds",
                 operation=operation,
                 archive_path=archive_name
             )
         except FileNotFoundError:
-            raise Archive2Error(
-                message=f"Archive2.exe not found at: {archive2_path}",
+            raise BSArchError(
+                message=f"bsarch.exe not found at: {bsarch_path}",
                 operation=operation,
                 archive_path=archive_name
             )
         except PermissionError:
-            raise Archive2Error(
+            raise BSArchError(
                 message="Permission denied - try running as Administrator",
                 operation=operation,
                 archive_path=archive_name
             )
         except Exception as e:
-            raise Archive2Error(
+            raise BSArchError(
                 message=str(e),
                 operation=operation,
                 archive_path=archive_name
             )
 
-    def _parse_archive2_error(self, stderr: str, stdout: str, return_code: int) -> str:
-        """Parse Archive2 output to provide user-friendly error messages."""
+    def _parse_bsarch_error(self, stderr: str, stdout: str, return_code: int) -> str:
+        """Parse bsarch output to provide user-friendly error messages."""
         combined = f"{stderr} {stdout}".lower()
         
         if "access" in combined and "denied" in combined:
@@ -123,24 +166,263 @@ class CCMerger:
             return "Archive appears to be corrupted or in an invalid format"
         elif "in use" in combined or "locked" in combined:
             return "File is locked by another process (possibly the game or another tool)"
-        elif return_code == 1:
+        elif return_code != 0:
             # Generic error - provide context
             if stderr.strip():
-                return f"Archive2 reported an error: {stderr.strip()}"
+                return f"BSArch reported an error: {stderr.strip()}"
             elif stdout.strip():
-                return f"Archive2 output: {stdout.strip()}"
+                return f"BSArch output: {stdout.strip()}"
             else:
-                return "Archive2 failed without providing details. Check disk space and file permissions."
+                return "BSArch failed without providing details. Check disk space and file permissions."
         else:
             return f"Unexpected error (code {return_code})"
 
-    def verify_ba2_integrity(self, ba2_path: Path, archive2_path: str = None, 
+    def _extract_archive(self, ba2_path: Path, output_dir: Path, 
+                        progress_callback: Callable = None) -> None:
+        """Extract a BA2 archive using bsarch.
+        
+        Args:
+            ba2_path: Path to the BA2 file to extract
+            output_dir: Directory to extract files to
+            progress_callback: Optional callback for progress messages
+            
+        Raises:
+            BSArchError on failure
+        """
+        # bsarch unpack <archive> [folder] [-mt]
+        args = ["unpack", str(ba2_path), str(output_dir), "-mt"]
+        self._run_bsarch(args, operation="unpack", archive_name=ba2_path.name, 
+                        progress_callback=progress_callback)
+
+    def _pack_general_archive(self, source_dir: Path, output_path: Path,
+                              compress: bool = True,
+                              progress_callback: Callable = None) -> None:
+        """Create a general (GNRL) BA2 archive using bsarch.
+        
+        Args:
+            source_dir: Directory containing files to pack
+            output_path: Path for the output BA2 file
+            compress: Whether to compress the archive (default True)
+            progress_callback: Optional callback for progress messages
+            
+        Raises:
+            BSArchError on failure
+        """
+        # bsarch pack <folder> <archive> -fo4 [-z] [-mt] [-share]
+        args = ["pack", str(source_dir), str(output_path), "-fo4", "-mt", "-share"]
+        if compress:
+            args.append("-z")
+        self._run_bsarch(args, operation="pack", archive_name=output_path.name,
+                        progress_callback=progress_callback)
+
+    def _pack_texture_archive(self, source_dir: Path, output_path: Path,
+                              progress_callback: Callable = None) -> None:
+        """Create a texture (DX10) BA2 archive using bsarch.
+        
+        Note: Texture archives are always compressed per bsarch requirements.
+        
+        Args:
+            source_dir: Directory containing texture files to pack
+            output_path: Path for the output BA2 file
+            progress_callback: Optional callback for progress messages
+            
+        Raises:
+            BSArchError on failure
+        """
+        # bsarch pack <folder> <archive> -fo4dds -z [-mt] [-share]
+        # Note: -fo4dds requires -z (compression) per bsarch docs
+        args = ["pack", str(source_dir), str(output_path), "-fo4dds", "-z", "-mt", "-share"]
+        self._run_bsarch(args, operation="pack", archive_name=output_path.name,
+                        progress_callback=progress_callback)
+
+    def _pack_sound_archive(self, source_dir: Path, output_path: Path,
+                            progress_callback: Callable = None) -> None:
+        """Create an uncompressed general BA2 archive for sound files.
+        
+        Note: Sound files should not be compressed for optimal game compatibility.
+        
+        Args:
+            source_dir: Directory containing sound files to pack
+            output_path: Path for the output BA2 file
+            progress_callback: Optional callback for progress messages
+            
+        Raises:
+            BSArchError on failure
+        """
+        # bsarch pack <folder> <archive> -fo4 [-mt] [-share]
+        # No -z flag = uncompressed
+        args = ["pack", str(source_dir), str(output_path), "-fo4", "-mt", "-share"]
+        self._run_bsarch(args, operation="pack", archive_name=output_path.name,
+                        progress_callback=progress_callback)
+
+    def _get_archive_file_list(self, ba2_path: Path) -> Tuple[bool, List[str], int, str]:
+        """Get the list of files in a BA2 archive using bsarch.
+        
+        Args:
+            ba2_path: Path to the BA2 file
+            
+        Returns:
+            Tuple of (success, file_list, file_count, error_message)
+        """
+        try:
+            bsarch_path = self._find_bsarch()
+            result = subprocess.run(
+                [bsarch_path, str(ba2_path), "-list"],
+                capture_output=True,
+                text=True,
+                timeout=120  # 2 minute timeout for listing
+            )
+            
+            if result.returncode != 0:
+                return False, [], 0, f"BSArch failed: {result.stderr.strip() or 'Unknown error'}"
+            
+            # Parse the output - BSArch shows header info first, then file list
+            files = []
+            file_count = 0
+            in_file_list = False
+            
+            for line in result.stdout.strip().split('\n'):
+                line = line.strip()
+                if not line:
+                    in_file_list = True  # Empty line separates header from file list
+                    continue
+                
+                # Parse file count from header
+                if line.startswith('Files:'):
+                    try:
+                        file_count = int(line.split(':')[1].strip())
+                    except:
+                        pass
+                    continue
+                
+                # Skip header lines
+                if ':' in line and not in_file_list:
+                    continue
+                if line.startswith('BSArch') or line.startswith('The Source') or line.startswith('https:'):
+                    continue
+                if line.startswith('Packer and unpacker'):
+                    continue
+                
+                # This is a file entry
+                if in_file_list and line and not line.startswith(' '):
+                    # Normalize path separators
+                    normalized = line.replace('/', '\\').lower()
+                    files.append(normalized)
+            
+            return True, files, file_count, ""
+            
+        except subprocess.TimeoutExpired:
+            return False, [], 0, "BSArch timed out listing archive contents"
+        except FileNotFoundError:
+            return False, [], 0, "BSArch not found"
+        except Exception as e:
+            return False, [], 0, str(e)
+
+    def _get_ba2_file_count(self, ba2_path: Path) -> Tuple[bool, int, str]:
+        """Read the file count from a BA2 archive header.
+        
+        Args:
+            ba2_path: Path to the BA2 file
+            
+        Returns:
+            Tuple of (success, file_count, error_message)
+        """
+        try:
+            with open(ba2_path, 'rb') as f:
+                # Read and verify BA2 magic number
+                magic = f.read(4)
+                if magic != b'BTDX':
+                    return False, 0, f"Invalid BA2 header: {ba2_path.name}"
+                
+                # Skip version (4 bytes) and archive type (4 bytes)
+                f.read(8)
+                
+                # Read file count
+                file_count = struct.unpack('<I', f.read(4))[0]
+                return True, file_count, ""
+                
+        except Exception as e:
+            return False, 0, f"Error reading BA2 header: {e}"
+
+    def _verify_extraction(self, ba2_path: Path, extract_dir: Path, 
+                          progress_callback: Callable = None) -> Tuple[bool, str]:
+        """Verify that extraction completed by comparing file lists.
+        
+        Args:
+            ba2_path: Path to the original BA2 file
+            extract_dir: Directory where files were extracted
+            progress_callback: Optional callback for progress messages
+            
+        Returns:
+            Tuple of (success, error_message)
+        """
+        # Try bsarch -list first for accurate file list verification
+        success, expected_files, file_count, error = self._get_archive_file_list(ba2_path)
+        
+        if success and expected_files:
+            # Build set of extracted files (normalized paths relative to extract_dir)
+            extracted_files = set()
+            for f in extract_dir.rglob("*"):
+                if f.is_file():
+                    rel_path = str(f.relative_to(extract_dir)).lower()
+                    extracted_files.add(rel_path)
+            
+            # Check for missing files
+            missing_files = []
+            for expected in expected_files:
+                if expected not in extracted_files:
+                    # Try matching just the filename
+                    expected_name = os.path.basename(expected)
+                    found = any(os.path.basename(ext) == expected_name for ext in extracted_files)
+                    if not found:
+                        missing_files.append(expected)
+            
+            if missing_files:
+                missing_count = len(missing_files)
+                if missing_count <= 3:
+                    return False, f"Missing {missing_count} files: {', '.join(missing_files)}"
+                else:
+                    return False, f"Missing {missing_count}/{len(expected_files)} files (e.g., {missing_files[0]})"
+            
+            return True, ""
+        elif error:
+            if progress_callback:
+                progress_callback(f"  Warning: BSArch verification failed: {error}")
+        
+        # Fallback: Use header file count
+        success, expected_count, error = self._get_ba2_file_count(ba2_path)
+        
+        if not success:
+            if progress_callback:
+                progress_callback(f"  Warning: Could not read archive header: {error}")
+            # Can't verify, but don't fail - just check something was extracted
+            extracted_count = sum(1 for _ in extract_dir.rglob("*") if _.is_file())
+            if extracted_count == 0:
+                return False, f"No files extracted from {ba2_path.name}"
+            return True, ""
+        
+        if expected_count == 0:
+            if progress_callback:
+                progress_callback(f"  Warning: Archive reports 0 files: {ba2_path.name}")
+            return True, ""
+        
+        # Count extracted files in the directory
+        extracted_count = sum(1 for _ in extract_dir.rglob("*") if _.is_file())
+        
+        # Allow for some tolerance (90% threshold)
+        min_expected = int(expected_count * 0.9)
+        
+        if extracted_count < min_expected:
+            return False, f"Extraction incomplete: expected ~{expected_count} files, got {extracted_count}"
+        
+        return True, ""
+
+    def verify_ba2_integrity(self, ba2_path: Path, 
                              progress_callback: Callable = None) -> Tuple[bool, str]:
         """Verify a BA2 archive is valid and not corrupted.
         
         Args:
             ba2_path: Path to the BA2 file to verify
-            archive2_path: Path to Archive2.exe (optional, for deep validation)
             progress_callback: Optional callback for status messages
             
         Returns:
@@ -189,25 +471,15 @@ class CCMerger:
                 if name_table_offset > file_size:
                     return False, f"Corrupted archive (name table beyond EOF): {ba2_path.name}"
                 
-                # If Archive2 is available, try a test extraction
-                if archive2_path and os.path.exists(archive2_path):
-                    try:
-                        # Use -l to list contents (quick validation)
-                        result = subprocess.run(
-                            [archive2_path, str(ba2_path), "-l"],
-                            capture_output=True,
-                            text=True,
-                            timeout=60
-                        )
-                        if result.returncode != 0:
-                            return False, f"Archive2 validation failed: {result.stderr.strip() or 'Unknown error'}"
-                    except subprocess.TimeoutExpired:
-                        # Timeout on list is suspicious
-                        return False, f"Archive2 timed out reading archive: {ba2_path.name}"
-                    except Exception as e:
-                        # Don't fail on Archive2 issues, header check passed
+                # Use bsarch -list for additional validation
+                try:
+                    success, files, count, error = self._get_archive_file_list(ba2_path)
+                    if not success:
                         if progress_callback:
-                            progress_callback(f"  Note: Could not run Archive2 validation: {e}")
+                            progress_callback(f"  Note: Could not list archive contents: {error}")
+                except Exception as e:
+                    if progress_callback:
+                        progress_callback(f"  Note: Could not run BSArch validation: {e}")
                 
                 return True, f"Verified: {ba2_path.name} ({file_count} files, {file_size / (1024*1024):.1f} MB)"
                 
@@ -218,13 +490,29 @@ class CCMerger:
         except Exception as e:
             return False, f"Verification error: {e}"
 
-    def merge_cc_content(self, fo4_path, archive2_path, progress_callback):
+    def merge_cc_content(self, fo4_path, progress_callback):
+        """Main merge operation - combines CC archives into optimized merged archives.
+        
+        Args:
+            fo4_path: Path to Fallout 4 installation directory
+            progress_callback: Callback function for progress updates
+            
+        Returns:
+            Dict with 'success' bool and either 'summary' or 'error'
+        """
         data_path = Path(fo4_path) / "Data"
         backup_dir = data_path / "CC_Backup"
         temp_dir = data_path / "CC_Temp"
         
         if not data_path.exists():
             return {"success": False, "error": "Data folder not found."}
+
+        # Verify bsarch is available
+        try:
+            bsarch_path = self._find_bsarch()
+            progress_callback(f"Using BSArch: {bsarch_path}")
+        except BSArchError as e:
+            return {"success": False, "error": str(e)}
 
         # 1. Identify CC Files (exclude CCMerged files created by this tool)
         all_cc_files = list(data_path.glob("cc*.ba2"))
@@ -283,32 +571,34 @@ class CCMerger:
         main_ba2s = [f for f in cc_files if "texture" not in f.name.lower()]
         texture_ba2s = [f for f in cc_files if "texture" in f.name.lower()]
 
-        # Extract Main
+        # Extract Main archives with verification after each
         for i, f in enumerate(main_ba2s):
             progress_callback(f"Extracting Main [{i+1}/{len(main_ba2s)}]: {f.name}")
             try:
-                self._run_archive2(
-                    archive2_path, 
-                    [str(f), f"-e={general_dir}"],
-                    operation="extract",
-                    archive_name=f.name,
-                    progress_callback=progress_callback
-                )
-            except Archive2Error as e:
+                self._extract_archive(f, general_dir, progress_callback)
+                
+                # Verify extraction completed successfully
+                verify_ok, verify_error = self._verify_extraction(f, general_dir, progress_callback)
+                if not verify_ok:
+                    return {"success": False, "error": f"Verification failed for {f.name}: {verify_error}"}
+                progress_callback(f"  ✓ Verified: {f.name}")
+                
+            except BSArchError as e:
                 return {"success": False, "error": str(e)}
 
-        # Extract Textures
+        # Extract Textures with verification after each
         for i, f in enumerate(texture_ba2s):
             progress_callback(f"Extracting Textures [{i+1}/{len(texture_ba2s)}]: {f.name}")
             try:
-                self._run_archive2(
-                    archive2_path,
-                    [str(f), f"-e={textures_dir}"],
-                    operation="extract",
-                    archive_name=f.name,
-                    progress_callback=progress_callback
-                )
-            except Archive2Error as e:
+                self._extract_archive(f, textures_dir, progress_callback)
+                
+                # Verify extraction completed successfully
+                verify_ok, verify_error = self._verify_extraction(f, textures_dir, progress_callback)
+                if not verify_ok:
+                    return {"success": False, "error": f"Verification failed for {f.name}: {verify_error}"}
+                progress_callback(f"  ✓ Verified: {f.name}")
+                
+            except BSArchError as e:
                 return {"success": False, "error": str(e)}
 
         # Handle Strings - Move to Data/Strings (Force loose files)
@@ -361,15 +651,9 @@ class CCMerger:
             merged_sounds = data_path / f"{output_name_sounds} - Main.ba2"
             progress_callback("Repacking Sounds Archive (Uncompressed)...")
             try:
-                self._run_archive2(
-                    archive2_path,
-                    [str(sounds_dir), f"-c={merged_sounds}", "-f=General", "-compression=None", f"-r={sounds_dir}"],
-                    operation="create",
-                    archive_name=merged_sounds.name,
-                    progress_callback=progress_callback
-                )
+                self._pack_sound_archive(sounds_dir, merged_sounds, progress_callback)
                 created_archives.append(merged_sounds)
-            except Archive2Error as e:
+            except BSArchError as e:
                 return {"success": False, "error": str(e)}
             
             sounds_esl = f"{output_name_sounds}.esl"
@@ -377,22 +661,16 @@ class CCMerger:
             created_esls.append(sounds_esl)
 
         # 7. Repack Main (Compressed)
-        # Note: We use Default compression to ensure strings and other data are readable by the engine.
         output_name = "CCMerged"
         merged_main = data_path / f"{output_name} - Main.ba2"
         
         if list(general_dir.rglob("*")):
             progress_callback("Repacking Main Archive (Compressed)...")
             try:
-                self._run_archive2(
-                    archive2_path,
-                    [str(general_dir), f"-c={merged_main}", "-f=General", "-compression=Default", f"-r={general_dir}"],
-                    operation="create",
-                    archive_name=merged_main.name,
-                    progress_callback=progress_callback
-                )
+                self._pack_general_archive(general_dir, merged_main, compress=True, 
+                                          progress_callback=progress_callback)
                 created_archives.append(merged_main)
-            except Archive2Error as e:
+            except BSArchError as e:
                 return {"success": False, "error": str(e)}
             
             main_esl = f"{output_name}.esl"
@@ -400,7 +678,6 @@ class CCMerger:
             created_esls.append(main_esl)
 
         # 8. Repack Textures (Smart Splitting with Vanilla-style Naming)
-        # Vanilla naming: "CCMerged - Textures1.ba2", "CCMerged - Textures2.ba2", etc.
         texture_files = []
         for f in textures_dir.rglob("*"):
             if f.is_file():
@@ -427,7 +704,6 @@ class CCMerger:
             # Use vanilla-style numbering: Textures1, Textures2, etc. (1-indexed)
             texture_num = idx + 1
             # Each texture archive needs its own ESL to load properly
-            # Name format: CCMerged_Textures1.esl loads CCMerged_Textures1 - Textures.ba2
             texture_plugin_name = f"{output_name}_Textures{texture_num}"
             archive_name = f"{texture_plugin_name} - Textures.ba2"
             target_path = data_path / archive_name
@@ -445,15 +721,9 @@ class CCMerger:
                 shutil.copy2(f_path, dest)
             
             try:
-                self._run_archive2(
-                    archive2_path,
-                    [str(split_dir), f"-c={target_path}", "-f=DDS", "-compression=Default", f"-r={split_dir}"],
-                    operation="create",
-                    archive_name=archive_name,
-                    progress_callback=progress_callback
-                )
+                self._pack_texture_archive(split_dir, target_path, progress_callback)
                 created_archives.append(target_path)
-            except Archive2Error as e:
+            except BSArchError as e:
                 return {"success": False, "error": str(e)}
             
             # Create ESL for this texture archive
@@ -462,34 +732,13 @@ class CCMerger:
             created_esls.append(texture_esl)
             progress_callback(f"  Created {texture_esl} for {archive_name}")
 
-        # Note: We do NOT generate separate STRINGS files for CCMerged.esl
-        # The original CC plugins (cc*.esl) handle their own localization.
-        # We moved the STRINGS files to Data/Strings to ensure the game finds them.
         progress_callback("STRINGS files moved to Data/Strings.")
 
-        # 9. Verify archive integrity before proceeding
-        # NOTE: Archive validation disabled - was causing issues with some BA2 versions
-        # progress_callback("Verifying archive integrity...")
-        # verification_failed = []
-        # for archive_path in created_archives:
-        #     is_valid, message = self.verify_ba2_integrity(archive_path, archive2_path, progress_callback)
-        #     if is_valid:
-        #         progress_callback(f"  ✓ {message}")
-        #     else:
-        #         progress_callback(f"  ✗ {message}")
-        #         verification_failed.append(message)
-        # 
-        # if verification_failed:
-        #     error_msg = "Archive verification failed:\n" + "\n".join(verification_failed)
-        #     return {"success": False, "error": error_msg}
-        # 
-        # progress_callback(f"All {len(created_archives)} archives verified successfully.")
-
-        # 10. Add to plugins.txt
+        # 9. Add to plugins.txt
         progress_callback("Enabling plugins...")
         self._add_to_plugins_txt(created_esls)
 
-        # 11. Cleanup
+        # 10. Cleanup
         progress_callback("Cleaning up original CC files...")
         for f in cc_files:
             try:

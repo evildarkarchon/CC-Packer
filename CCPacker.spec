@@ -4,8 +4,8 @@
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
+    binaries=[('bsarch.exe', '.')],
+    datas=[('BSARCH_LICENSE.txt', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
