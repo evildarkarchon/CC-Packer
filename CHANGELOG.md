@@ -5,6 +5,30 @@ All notable changes to CC-Packer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-01-30
+
+### Added
+
+- **Bundled BSArch**: CC-Packer now includes bsarch.exe, eliminating the need for Archive2.exe/Creation Kit
+- **Registry-Based Detection**: Automatically finds Fallout 4 installation via Windows Registry
+- **BSArch License**: Added BSARCH_LICENSE.txt for MPL 2.0 compliance
+
+### Changed
+
+- **Standalone Operation**: No longer requires Archive2.exe or Creation Kit installation
+- **Output Naming**: Merged archives renamed from `CCMerged*` to `CCPacked*` for clarity
+- **Simplified UI**: Removed Archive2 path input field (no longer needed)
+
+### Fixed
+
+- **Archive Path Prefix**: Fixed bsarch path handling that caused files to be stored with incorrect prefixes (CC_Temp\General\), which prevented worldspace items from appearing in-game
+
+### Technical Details
+
+- Integrated bsarch.exe v1.0 x64 (MPL 2.0 licensed)
+- Pack operations now use working directory control for correct path resolution
+- Output paths resolved to absolute before packing
+
 ## [1.0.6] - 2025-11-29
 
 ### Fixed

@@ -3,14 +3,15 @@
 A simple, standalone tool to merge Fallout 4 Creation Club content into unified archives, reducing plugin count and improving load times.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0.6-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v1.0.6)
+[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v2.0)
 
 ## ✨ Features
 
-- **Automatic Detection**: Finds your Fallout 4 installation and Archive2.exe
+- **Fully Standalone**: No external tools required - bsarch.exe is bundled
+- **Automatic Detection**: Finds your Fallout 4 installation via Windows Registry
 - **Smart Merging**: Merges all `cc*.ba2` files in your Data folder
 - **Crash Prevention**: Automatically splits large texture archives (>3GB) to prevent the "Brown Face" bug
-- **FO4 Localization Support**: Generated ESL files include full Fallout 4 localization metadata (v1.0.2+)
+- **FO4 Localization Support**: Generated ESL files include full Fallout 4 localization metadata
 - **Light Master Plugins**: ESL files use proper light master headers for optimal compatibility
 - **Safety First**: Backs up all original files to `Data/CC_Backup` before making changes
 - **Easy Restore**: One-click restoration to original state
@@ -35,41 +36,38 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 - **NEW**: Full localization support for enhanced compatibility
 - **STRINGS Generation**: Automatic extraction and merging of localized text
 
-## 🆕 What's New in v1.0.6?
+## 🆕 What's New in v2.0
 
-### Texture Archive Fix
+### Fully Standalone Operation
 
-- **Individual ESL per Texture Archive**: Each split texture archive now gets its own ESL file
-- **New Naming Convention**: `CCMerged_Textures1.esl` → `CCMerged_Textures1 - Textures.ba2`
-- **Fixes Texture Loading**: Resolves issue where textures from split archives (Textures2, Textures3, etc.) weren't loading
+- **No More Archive2**: CC-Packer now bundles bsarch.exe - no Creation Kit required!
+- **Registry Detection**: Automatically finds Fallout 4 via Windows Registry
+- **Simplified UI**: Removed Archive2 path field - just set your FO4 path and go
+- **New Output Names**: Merged archives now named `CCPacked*` instead of `CCMerged*`
 
-### Previous Major Features (v1.0.3)
+### Technical Improvements
+
+- Fixed archive path handling for correct game compatibility
+- Better error handling and progress reporting
+
+### Previous Features
 
 - **Loose STRINGS Extraction**: STRINGS files extracted to `Data/Strings` as loose files
 - **Separate Audio Archive**: Sound files packed uncompressed to prevent audio corruption
 - **Vanilla-Style Naming**: Texture archives use numbered naming like vanilla
 - **Merged File Detection**: Prevents accidental re-merging
-- **Comprehensive Error Handling**: Detailed error messages
-- **Administrator Detection**: Warns if running in protected location without admin rights
-
-### Localization Support
-
-- All original CC STRINGS files are extracted to `Data/Strings` folder
-- Original CC plugins (cc*.esl) continue to handle their own localization
-- All languages supported (en, de, es, fr, it, ja, pl, pt, ru, zh)
-- Prevents "LOOKUP FAILED!" errors
+- **Individual ESL per Texture Archive**: Each split texture archive gets its own ESL
 
 ## 📋 Requirements
 
 - Windows 10/11 (64-bit)
 - Fallout 4 with Creation Club content
-- Creation Kit (for `Archive2.exe`) - [Steam](steam://install/1946160) | [Bethesda.net](https://bethesda.net/en/game/bethesda-launcher)
 
 ## 📥 Installation
 
 ### Option 1: Download Binary (Recommended)
 
-1. Download `CC-Packer_v1.0.6.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
+1. Download `CC-Packer_v2.0.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
 2. Extract anywhere on your PC
 3. Run `CCPacker.exe` - no installation needed!
 
@@ -106,16 +104,17 @@ If auto-detection fails:
 ## 📊 What Gets Merged
 
 | Source Files | Output Archive | Notes |
-|-------------|----------------|-------|
-| `cc* - Main.ba2` | `CCMerged - Main.ba2` | Compressed, meshes/scripts/etc |
-| `cc* - Textures.ba2` | `CCMerged_Textures1 - Textures.ba2`, etc. | Auto-split at 7GB, each with own ESL |
-| Sound files (.xwm, .wav, .fuz, .lip) | `CCMerged_Sounds - Main.ba2` | Uncompressed to prevent audio issues |
+| ------------- | ---------------- | ------- |
+| `cc* - Main.ba2` | `CCPacked - Main.ba2` | Compressed, meshes/scripts/etc |
+| `cc* - Textures.ba2` | `CCPacked_Textures1 - Textures.ba2`, etc. | Auto-split at 7GB, each with own ESL |
+| Sound files (.xwm, .wav, .fuz, .lip) | `CCPacked_Sounds - Main.ba2` | Uncompressed to prevent audio issues |
 | STRINGS files | `Data/Strings/*.STRINGS` | Extracted as loose files |
 
 **Output ESL Plugins:**
-- `CCMerged.esl` - Light master for main archive
-- `CCMerged_Textures1.esl`, `CCMerged_Textures2.esl`, etc. - One per texture archive
-- `CCMerged_Sounds.esl` - Light master for audio archive
+
+- `CCPacked.esl` - Light master for main archive
+- `CCPacked_Textures1.esl`, `CCPacked_Textures2.esl`, etc. - One per texture archive
+- `CCPacked_Sounds.esl` - Light master for audio archive
 
 ## 🔨 Building from Source
 
