@@ -109,22 +109,34 @@ class MainWindow(QMainWindow):
         
         Returns:
             dict with keys:
-                - 'has_ccmerged': bool - If CCMerged files exist
-                - 'has_other_cc': bool - If other cc*.ba2 files exist (excluding CCMerged)
+                - 'has_ccmerged': bool - If CCPacked files exist
+                - 'has_other_cc': bool - If other cc*.ba2 files exist (excluding CCPacked)
                 - 'backup_count': int - Number of existing backups
-                - 'ccmerged_files': list - Names of CCMerged files found
+                - 'ccmerged_files': list - Names of CCPacked files found
                 - 'other_cc_files': list - Names of other CC files found
         """
         from pathlib import Path
         data_path = Path(fo4_path) / "Data"
         backup_dir = data_path / "CC_Backup"
         
+        # Default empty result
+        result = {
+            'has_ccmerged': False,
+            'has_other_cc': False,
+            'backup_count': 0,
+            'ccmerged_files': [],
+            'other_cc_files': []
+        }
+        
+        if not data_path.exists():
+            return result
+        
         # Get all cc*.ba2 files
         all_cc_files = list(data_path.glob("cc*.ba2"))
         
-        # Separate into CCMerged and other
-        ccmerged_files = [f.name for f in all_cc_files if f.name.lower().startswith("ccmerged")]
-        other_cc_files = [f.name for f in all_cc_files if not f.name.lower().startswith("ccmerged")]
+        # Separate into CCPacked and other
+        ccmerged_files = [f.name for f in all_cc_files if f.name.lower().startswith("ccpacked")]
+        other_cc_files = [f.name for f in all_cc_files if not f.name.lower().startswith("ccpacked")]
         
         # Count backups
         backup_count = 0
@@ -239,20 +251,82 @@ class MainWindow(QMainWindow):
         return False
 
     def detect_paths(self):
-        # Try to detect FO4
-        # Common paths
-        common_paths = [
-            r"C:\Program Files (x86)\Steam\steamapps\common\Fallout 4",
-            r"C:\Program Files\Steam\steamapps\common\Fallout 4",
-            r"D:\SteamLibrary\steamapps\common\Fallout 4"
-        ]
+        # Try to detect FO4 via registry
+        import winreg
         
-        for path in common_paths:
-            if os.path.exists(path):
-                self.fo4_input.setText(path)
-                self._show_merge_status(path)
-                self._check_elevation_needed(path)
-                break
+        fo4_path = None
+        
+        # Method 1: Check Bethesda's Fallout 4 registry key directly
+        try:
+            for reg_path in [
+                r"SOFTWARE\WOW6432Node\Bethesda Softworks\Fallout4",
+                r"SOFTWARE\Bethesda Softworks\Fallout4"
+            ]:
+                try:
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
+                        path = winreg.QueryValueEx(key, "Installed Path")[0]
+                        if path and os.path.exists(path):
+                            fo4_path = path.rstrip("\\")
+                            break
+                except (FileNotFoundError, OSError):
+                    continue
+        except Exception as e:
+            self.log(f"Registry detection error: {e}")
+        
+        # Method 2: Fallback - check Steam library folders
+        if not fo4_path:
+            try:
+                steam_path = None
+                for reg_path in [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"]:
+                    try:
+                        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
+                            steam_path = winreg.QueryValueEx(key, "InstallPath")[0]
+                            break
+                    except (FileNotFoundError, OSError):
+                        continue
+                
+                if steam_path:
+                    vdf_path = os.path.join(steam_path, "steamapps", "libraryfolders.vdf")
+                    if os.path.exists(vdf_path):
+                        library_paths = [steam_path]
+                        with open(vdf_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            import re
+                            paths = re.findall(r'"path"\s+"([^"]+)"', content)
+                            library_paths.extend(paths)
+                        
+                        for lib_path in library_paths:
+                            potential_fo4 = os.path.join(lib_path, "steamapps", "common", "Fallout 4")
+                            if os.path.exists(potential_fo4):
+                                fo4_path = potential_fo4
+                                break
+            except Exception as e:
+                self.log(f"Steam detection error: {e}")
+        
+        # Method 3: Fallback to common hardcoded paths
+        if not fo4_path:
+            common_paths = [
+                r"C:\Program Files (x86)\Steam\steamapps\common\Fallout 4",
+                r"C:\Program Files\Steam\steamapps\common\Fallout 4",
+                r"D:\SteamLibrary\steamapps\common\Fallout 4",
+                r"E:\SteamLibrary\steamapps\common\Fallout 4",
+            ]
+            for path in common_paths:
+                if os.path.exists(path):
+                    fo4_path = path
+                    break
+        
+        # Apply the detected path
+        if fo4_path:
+            self.fo4_input.setText(fo4_path)
+            self.log(f"Auto-detected Fallout 4 at: {fo4_path}")
+            try:
+                self._show_merge_status(fo4_path)
+                self._check_elevation_needed(fo4_path)
+            except Exception as e:
+                self.log(f"Error checking status: {e}")
+        else:
+            self.log("Fallout 4 not found. Please browse to select.")
 
     def browse_fo4(self):
         path = QFileDialog.getExistingDirectory(self, "Select Fallout 4 Directory")
