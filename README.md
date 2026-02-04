@@ -83,7 +83,7 @@ python main.py
 ## 🚀 Quick Start
 
 1. **Launch**: Double-click `CCPacker.exe` (or run `python main.py`)
-2. **Auto-Detection**: Tool finds Fallout 4 and Archive2.exe automatically
+2. **Auto-Detection**: Tool finds Fallout 4 automatically via Windows Registry
 3. **Merge**: Click "Merge CC Archives" button
 4. **Wait**: Progress bar shows status (may take 5-15 minutes)
 5. **Done**: Launch Fallout 4 and enjoy!
@@ -91,8 +91,7 @@ python main.py
 ### Manual Path Selection
 
 If auto-detection fails:
-- Click "Browse..." to select your Fallout 4 Data folder
-- Click "Browse..." to select Archive2.exe location
+- Click "Browse..." to select your Fallout 4 folder
 
 ## 🛡️ Safety & Backup
 
