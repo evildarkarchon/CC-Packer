@@ -13,7 +13,7 @@ Classes:
     MainWindow: Main application window with UI and controls
 
 Author: CC Packer Development Team
-Version: 2.0
+Version: 3.0.0
 License: See LICENSE file
 """
 
@@ -155,7 +155,7 @@ class MainWindow(QMainWindow):
         attempts to auto-detect the Fallout 4 installation path.
         """
         super().__init__()
-        self.setWindowTitle("CC-Packer v2.0")
+        self.setWindowTitle("CC-Packer v3.0.0")
         self.setGeometry(100, 100, 800, 600)
         self.merger = CCMerger()
         self.worker = None
@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
         
         The UI uses PyQt6 layouts for responsive design.
         """
-        self.setWindowTitle("CC Packer v2.0")
+        self.setWindowTitle("CC Packer v3.0.0")
         self.setMinimumSize(600, 500)
 
         central_widget = QWidget()
@@ -583,8 +583,8 @@ class MainWindow(QMainWindow):
         """
         from pathlib import Path
         
-        # Format the list of orphaned items
-        orphaned_list = "\n".join([f"  • {name}" for name in orphaned_names])
+        # Format the list of orphaned items with HTML for better visibility
+        orphaned_list = "<br>".join([f"&nbsp;&nbsp;&nbsp;&nbsp;<b>{name}</b>" for name in orphaned_names])
         
         # Create custom message box with clickable link
         msg_box = QMessageBox(self)
@@ -593,16 +593,16 @@ class MainWindow(QMainWindow):
         
         # Build message with rich text for clickable link
         message = (
-            "The following Creation Club items are missing their required BA2 archive files:\n\n"
-            f"{orphaned_list}\n\n"
+            "The following Creation Club items are missing their required BA2 archive files:<br><br>"
+            f"{orphaned_list}<br><br>"
             "You may continue, but these items will not function and may cause instability "
             "or crashing until you have deleted and re-downloaded them from the Creations Shop "
-            "on the Fallout 4 main menu.\n\n"
+            "on the Fallout 4 main menu.<br><br>"
             "Note that this is not an issue with CC Packer; it is a known issue with the "
-            "download engine built into the game.\n\n"
+            "download engine built into the game.<br><br>"
             "I can automatically delete the affected incomplete CC items for you, I can delete them "
-            "and continue packing the remaining files, or you can quit CC Packer to do the deletions "
-            "and re-download them yourself.\n\n"
+            "and continue packing the remaining files, or you can cancel packing to do the deletions "
+            "and re-download them yourself.<br><br>"
             'See the <a href="https://www.nexusmods.com/fallout4/mods/98589?tab=description">CC Packer main page</a> '
             "on Nexus Mods for more information."
         )
@@ -612,9 +612,9 @@ class MainWindow(QMainWindow):
         msg_box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         
         # Add custom buttons
-        delete_quit_btn = msg_box.addButton("Delete Orphaned CC Content And Quit", QMessageBox.ButtonRole.DestructiveRole)
+        delete_quit_btn = msg_box.addButton("Delete Orphaned CC Content And Cancel Packing", QMessageBox.ButtonRole.DestructiveRole)
         delete_continue_btn = msg_box.addButton("Delete Orphaned CC Content and Continue", QMessageBox.ButtonRole.AcceptRole)
-        _quit_btn = msg_box.addButton("Quit CC Packer Now", QMessageBox.ButtonRole.RejectRole)
+        _quit_btn = msg_box.addButton("Make No Changes andCancel Packing Now", QMessageBox.ButtonRole.RejectRole)
         
         msg_box.exec()
         clicked = msg_box.clickedButton()
@@ -680,34 +680,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Invalid Fallout 4 path.")
             return
 
-        # Check current state and handle appropriately
-        status = self._check_existing_backup(fo4)
-        
-        # Case 1: Only merged files exist - can't merge
-        if status['has_ccmerged'] and not status['has_other_cc']:
-            QMessageBox.information(
-                self,
-                "All Files Merged",
-                "All Creation Club files are already merged.\n\n"
-                "To merge additional CC files:\n"
-                "1. Click 'Restore Backup'\n"
-                "2. Add new CC files to Data folder\n"
-                "3. Click 'Merge CC Content' again"
-            )
-            return
-        
-        # Case 2: Mixed merged and unmerged files - offer restore and repack
-        mixed_action = self._handle_merge_with_mixed_files(fo4)
-        if mixed_action == 'cancel':
-            self.log("Merge cancelled by user.")
-            return
-        elif mixed_action == 'restore_and_merge':
-            self.log("User chose to restore and repack all CC items.")
-            self._pending_merge_after_restore = True
-            self.start_restore()
-            return
-        
-        # Case 3: Validate CC content integrity before starting merge
+        # Validate CC content integrity FIRST (before checking merge status)
         from pathlib import Path
         data_path = Path(fo4) / "Data"
         
@@ -744,6 +717,33 @@ class MainWindow(QMainWindow):
             else:
                 # Error or cancellation
                 return
+        
+        # Check current state and handle appropriately
+        status = self._check_existing_backup(fo4)
+        
+        # Case 1: Only merged files exist - can't merge
+        if status['has_ccmerged'] and not status['has_other_cc']:
+            QMessageBox.information(
+                self,
+                "All Files Merged",
+                "All Creation Club files are already merged.\n\n"
+                "To merge additional CC files:\n"
+                "1. Click 'Restore Backup'\n"
+                "2. Add new CC files to Data folder\n"
+                "3. Click 'Merge CC Content' again"
+            )
+            return
+        
+        # Case 2: Mixed merged and unmerged files - offer restore and repack
+        mixed_action = self._handle_merge_with_mixed_files(fo4)
+        if mixed_action == 'cancel':
+            self.log("Merge cancelled by user.")
+            return
+        elif mixed_action == 'restore_and_merge':
+            self.log("User chose to restore and repack all CC items.")
+            self._pending_merge_after_restore = True
+            self.start_restore()
+            return
         
         # Verify we have content to merge
         if not valid_cc:

@@ -3,7 +3,7 @@
 A simple, standalone tool to merge Fallout 4 Creation Club content into unified archives, reducing plugin count and improving load times.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v2.0)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v3.0.0)
 
 ## ✨ Features
 
@@ -36,21 +36,33 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 - **NEW**: Full localization support for enhanced compatibility
 - **STRINGS Generation**: Automatic extraction and merging of localized text
 
-## 🆕 What's New in v2.0
+## 🆕 What's New in v3.0.0
+
+### Content Integrity & Validation
+
+- **Orphaned Content Detection**: Validates Creation Club content before merging by checking that each CC plugin has both required BA2 archives
+- **Automatic Cleanup**: Offers to automatically delete incomplete/orphaned CC downloads before merging
+- **Detailed Warnings**: Clear explanations when CC content is missing files
+
+### Improved Detection
+
+- **Plugin-First Scanning**: More accurate detection of creation club items
+- **Mixed Content Handling**: Option to automatically restore and repack when adding new CC content after a previous merge
+
+### Developer-Friendly
+
+- **Comprehensive Documentation**: Full API documentation throughout codebase for easier contributions and modifications
+
+## Previous Version Highlights (v2.0)
 
 ### Fully Standalone Operation
 
-- **No More Archive2**: CC-Packer now bundles bsarch.exe - no Creation Kit required!
+- **No More Archive2**: CC-Packer bundles bsarch.exe - no Creation Kit required!
 - **Registry Detection**: Automatically finds Fallout 4 via Windows Registry
-- **Simplified UI**: Removed Archive2 path field - just set your FO4 path and go
-- **New Output Names**: Merged archives now named `CCPacked*` instead of `CCMerged*`
+- **Simplified UI**: Removed Archive2 path field
+- **New Output Names**: Merged archives named `CCPacked*` instead of `CCMerged*`
 
-### Technical Improvements
-
-- Fixed archive path handling for correct game compatibility
-- Better error handling and progress reporting
-
-### Previous Features
+### Previous Features (v1.x)
 
 - **Loose STRINGS Extraction**: STRINGS files extracted to `Data/Strings` as loose files
 - **Separate Audio Archive**: Sound files packed uncompressed to prevent audio corruption
@@ -67,7 +79,7 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 
 ### Option 1: Download Binary (Recommended)
 
-1. Download `CC-Packer_v2.0.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
+1. Download `CC-Packer_v3.0.0.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
 2. Extract anywhere on your PC
 3. Run `CCPacker.exe` - no installation needed!
 
@@ -147,10 +159,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/jturnley/CC-Packer/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/jturnley/CC-Packer/discussions)
-- **Release Notes**: [View v2.0 Release Notes](RELEASE_NOTES_v2.0.md)
+- **Release Notes**: [View v3.0.0 Release Notes](RELEASE_NOTES_v3.0.0.md)
 
 ## 📋 Version History
 
+- **v3.0.0** (February 10, 2026) - Content integrity validation, orphaned CC detection, automatic cleanup, plugin-first detection
 - **v2.0** (January 30, 2026) - Standalone operation with bundled BSArch, no more Archive2/Creation Kit requirement
 - **v1.0.6** (November 29, 2025) - Fixed texture archives not loading (each texture archive now gets its own ESL)
 - **v1.0.5** (November 29, 2025) - Disabled post-merge archive validation

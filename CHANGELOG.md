@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-02-10
+
 ### Added
 
 - **Orphaned CC Content Detection**: CC-Packer now validates Creation Club content integrity before merging by checking that each CC plugin file has both required BA2 archives (Main and Textures). Incomplete or orphaned items are detected and reported to the user.
