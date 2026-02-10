@@ -6,7 +6,7 @@
 
 ### Fixed ESL Archive Loading Issue
 
-**Problem:** The main ESL file (`CCPacked.esl`) was causing the game to load archive files for other archives (textures, sounds) even when their respective ESL files were not enabled.
+**Problem:** The main ESL file (`CCPacked_Main.esl`) was causing the game to load archive files for other archives (textures, sounds) even when their respective ESL files were not enabled.
 
 **Root Cause:** Archive naming conflict - all archives shared the `CCPacked` prefix, causing Fallout 4 to load multiple archives when searching for matches based on the plugin name.
 

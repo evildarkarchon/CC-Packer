@@ -490,7 +490,7 @@ class CCMerger:
         # 1. Identify CC Files (exclude CCMerged files created by this tool)
         all_cc_files = list(data_path.glob("cc*.ba2"))
         # Filter out any CCPacked archives to prevent re-packing previously merged content
-        cc_files = [f for f in all_cc_files if not f.name.lower().startswith("ccpacked_") and not f.name.lower().startswith("ccpacked.")]
+        cc_files = [f for f in all_cc_files if not f.name.lower().startswith("ccpacked")]
         
         if not cc_files:
             if all_cc_files:
@@ -634,8 +634,8 @@ class CCMerger:
             created_esls.append(sounds_esl)
 
         # 7. Repack Main (Compressed)
-        output_name = "CCPacked_Main"
-        merged_main = data_path / f"{output_name} - General.ba2"
+        output_name = "CCPacked"
+        merged_main = data_path / f"{output_name} - Main.ba2"
         
         if list(general_dir.rglob("*")):
             progress_callback("Repacking Main Archive (Compressed)...")
