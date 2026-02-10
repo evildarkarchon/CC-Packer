@@ -1,3 +1,37 @@
+"""CC Packer - Creation Club Content Merger
+
+This module provides the core functionality for merging Fallout 4 Creation Club content
+into optimized archive files. It handles:
+
+- Validation of CC content integrity (checking for complete plugin + BA2 sets)
+- Extraction of individual CC archives using BSArch
+- Intelligent separation of content types (general, textures, sounds, strings)
+- Repacking into optimized merged archives with appropriate compression
+- Smart texture splitting to respect game engine limits
+- Backup creation and restoration
+- Plugin file management (ESL creation and plugins.txt updates)
+
+The merger uses BSArch.exe (bundled with the application) for all BA2 archive
+operations and provides comprehensive error handling and progress reporting.
+
+Key Features:
+- Content validation to detect incomplete/orphaned CC items
+- Automatic cleanup of orphaned content
+- Compressed repacking for general content
+- Uncompressed repacking for sound files
+- Smart texture splitting with vanilla-style naming
+- Preservation of STRINGS files as loose files
+- Complete backup system with timestamp-based versioning
+
+Classes:
+    BSArchError: Custom exception for BSArch operation failures
+    CCMerger: Main class that orchestrates all merge/restore operations
+
+Author: CC Packer Development Team
+Version: 2.0
+License: See LICENSE file
+"""
+
 import os
 import shutil
 import subprocess
@@ -13,9 +47,24 @@ from typing import Optional, Callable, Dict, Any, List, Tuple
 
 
 class BSArchError(Exception):
-    """Custom exception for BSArch operations with detailed error info."""
-    def __init__(self, message: str, operation: str, archive_path: str = None, 
-                 return_code: int = None, stdout: str = None, stderr: str = None):
+    """Custom exception for BSArch operations with detailed error information.
+    
+    This exception provides comprehensive error details when BSArch.exe operations
+    fail, including return codes, stdout/stderr output, and contextual information
+    about what was being attempted.
+    
+    Attributes:
+        operation (str): The operation being performed (e.g., 'pack', 'unpack', 'list')
+        archive_path (str): Path to the archive being processed, if applicable
+        return_code (int): BSArch exit code, if available
+        stdout (str): Standard output from BSArch, if captured
+        stderr (str): Error output from BSArch, if captured
+    
+    The exception message is automatically formatted to include all available
+    error details in a human-readable format.
+    """
+    def __init__(self, message: str, operation: str, archive_path: Optional[str] = None, 
+                 return_code: Optional[int] = None, stdout: Optional[str] = None, stderr: Optional[str] = None):
         self.operation = operation
         self.archive_path = archive_path
         self.return_code = return_code
@@ -39,7 +88,42 @@ class BSArchError(Exception):
 
 
 class CCMerger:
+    """Main class for merging and restoring Fallout 4 Creation Club content.
+    
+    This class provides all functionality needed to:
+    - Validate CC content integrity (plugin files + BA2 archives)
+    - Detect and handle orphaned/incomplete CC items
+    - Merge individual CC archives into optimized combined archives
+    - Restore previously backed-up CC content
+    - Manage plugin files and game configuration
+    
+    The merger uses BSArch.exe for all BA2 operations and implements intelligent
+    content separation:
+    - General content (meshes, scripts, etc.) -> Compressed BA2
+    - Textures -> Compressed BA2, split at 7GB to avoid game engine limits
+    - Sounds -> Uncompressed BA2 for compatibility
+    - STRINGS -> Loose files in Data/Strings (required by game engine)
+    
+    Merged archives are named with the "CCPacked" prefix (changed from "CCMerged"
+    in v2.0) to distinguish them from original CC content. Each archive gets its own
+    corresponding ESL file with a matching prefix to ensure the game loads it correctly.
+    The merger automatically cleans up legacy v1.x CCMerged files during operations.
+    
+    Attributes:
+        logger: Python logger for internal logging
+        _last_error_details: Stores detailed error information from failed operations
+        _bsarch_path: Cached path to bsarch.exe to avoid repeated lookups
+    
+    Thread Safety:
+        This class is designed to be used from Qt worker threads. All file
+        operations use pathlib.Path for cross-platform compatibility.
+    """
     def __init__(self):
+        """Initialize the CCMerger instance.
+        
+        Sets up logging and initializes internal state variables.
+        The bsarch.exe path is cached on first use for performance.
+        """
         self.logger = logging.getLogger("CCPacker")
         logging.basicConfig(level=logging.INFO)
         self._last_error_details = None  # Store detailed error info
@@ -48,11 +132,21 @@ class CCMerger:
     def _find_bsarch(self) -> str:
         """Find bsarch.exe bundled with the application.
         
+        Searches for bsarch.exe in multiple locations depending on whether
+        the application is running as a PyInstaller bundle or as a Python script.
+        
+        Search locations (in order):
+        1. PyInstaller _MEIPASS directory (for bundled exe)
+        2. Directory containing the executable
+        3. Current working directory
+        
+        The path is cached after first successful lookup.
+        
         Returns:
-            Path to bsarch.exe
+            str: Absolute path to bsarch.exe
             
         Raises:
-            BSArchError if bsarch.exe is not found
+            BSArchError: If bsarch.exe cannot be found in any location
         """
         if self._bsarch_path and os.path.exists(self._bsarch_path):
             return self._bsarch_path
@@ -83,8 +177,8 @@ class CCMerger:
         )
 
     def _run_bsarch(self, args: List[str], operation: str, 
-                    archive_name: str = None, progress_callback: Callable = None,
-                    timeout: int = 600, cwd: Path = None) -> subprocess.CompletedProcess:
+                    archive_name: Optional[str] = None, progress_callback: Optional[Callable[[str], None]] = None,
+                    timeout: int = 600, cwd: Optional[Path] = None) -> subprocess.CompletedProcess[str]:
         """Run bsarch.exe with comprehensive error handling.
         
         Args:
@@ -155,7 +249,25 @@ class CCMerger:
             )
 
     def _parse_bsarch_error(self, stderr: str, stdout: str, return_code: int) -> str:
-        """Parse bsarch output to provide user-friendly error messages."""
+        """Parse BSArch error output to provide user-friendly error messages.
+        
+        Analyzes the output from bsarch.exe to identify common error conditions
+        and provides helpful guidance for resolving them.
+        
+        Common errors detected:
+        - Permission denied -> Suggest running as Administrator
+        - File not found -> Suggest checking paths
+        - Corrupted archives -> Suggest redownloading from Creations menu
+        - Generic failures -> Include raw error output
+        
+        Args:
+            stderr (str): Standard error output from bsarch.exe
+            stdout (str): Standard output from bsarch.exe
+            return_code (int): Exit code from bsarch.exe
+        
+        Returns:
+            str: User-friendly error message with actionable guidance
+        """
         combined = f"{stderr} {stdout}".lower()
         
         if "access" in combined and "denied" in combined:
@@ -180,7 +292,26 @@ class CCMerger:
             return f"Unexpected error (code {return_code})"
 
     def _extract_archive(self, ba2_path: Path, output_dir: Path, 
-                        progress_callback: Callable = None) -> None:
+                        progress_callback: Optional[Callable[[str], None]] = None) -> None:
+        """Extract a BA2 archive to the specified directory.
+        
+        Uses BSArch.exe to unpack the archive. All files are extracted while
+        preserving their directory structure.
+        
+        Args:
+            ba2_path (Path): Path to the BA2 archive to extract
+            output_dir (Path): Directory where files will be extracted
+            progress_callback (Callable, optional): Function to call with progress messages
+        
+        Raises:
+            BSArchError: If extraction fails for any reason
+        
+        Example:
+            >>> merger._extract_archive(
+            ...     Path('Data/ccBGSFO4001 - Main.ba2'),
+            ...     Path('Data/CC_Temp/General')
+            ... )
+        """
         """Extract a BA2 archive using bsarch.
         
         Args:
@@ -198,7 +329,7 @@ class CCMerger:
 
     def _pack_general_archive(self, source_dir: Path, output_path: Path,
                               compress: bool = True,
-                              progress_callback: Callable = None) -> None:
+                              progress_callback: Optional[Callable[[str], None]] = None) -> None:
         """Create a general (GNRL) BA2 archive using bsarch.
         
         Args:
@@ -220,7 +351,25 @@ class CCMerger:
                         progress_callback=progress_callback, cwd=source_dir)
 
     def _pack_texture_archive(self, source_dir: Path, output_path: Path,
-                              progress_callback: Callable = None) -> None:
+                              progress_callback: Optional[Callable[[str], None]] = None) -> None:
+        """Pack a texture (DX10) BA2 archive from directory contents.
+        
+        Creates a DX10-type BA2 archive specifically for texture files (DDS format).
+        Texture archives always use compression and must respect the game engine's
+        size limitations (handled by caller through texture splitting).
+        
+        Args:
+            source_dir (Path): Directory containing DDS texture files to pack
+            output_path (Path): Path where the BA2 archive will be created
+            progress_callback (Callable, optional): Function to call with progress messages
+        
+        Raises:
+            BSArchError: If packing fails
+        
+        Note:
+            The archive is created with the '-sse' flag for Fallout 4 compatibility.
+            Directory structure is preserved inside the archive.
+        """
         """Create a texture (DX10) BA2 archive using bsarch.
         
         Note: Texture archives are always compressed per bsarch requirements.
@@ -241,7 +390,25 @@ class CCMerger:
                         progress_callback=progress_callback, cwd=source_dir)
 
     def _pack_sound_archive(self, source_dir: Path, output_path: Path,
-                            progress_callback: Callable = None) -> None:
+                            progress_callback: Optional[Callable[[str], None]] = None) -> None:
+        """Pack an uncompressed general BA2 archive for sound files.
+        
+        Creates an uncompressed General-type BA2 archive for sound files (.xwm, .wav,
+        .fuz, .lip). Sound files must not be compressed to ensure proper playback
+        in the game engine.
+        
+        Args:
+            source_dir (Path): Directory containing sound files to pack
+            output_path (Path): Path where the BA2 archive will be created
+            progress_callback (Callable, optional): Function to call with progress messages
+        
+        Raises:
+            BSArchError: If packing fails
+        
+        Note:
+            Despite being a General archive type, the '-share' flag ensures no
+            compression is applied, which is critical for sound file compatibility.
+        """
         """Create an uncompressed general BA2 archive for sound files.
         
         Note: Sound files should not be compressed for optimal game compatibility.
@@ -262,6 +429,28 @@ class CCMerger:
                         progress_callback=progress_callback, cwd=source_dir)
 
     def _get_archive_file_list(self, ba2_path: Path) -> Tuple[bool, List[str], int, str]:
+        """Get list of files contained in a BA2 archive.
+        
+        Uses BSArch.exe to list the contents of an archive without extracting it.
+        Useful for verification and diagnostic purposes.
+        
+        Args:
+            ba2_path (Path): Path to the BA2 archive to list
+        
+        Returns:
+            Tuple containing:
+                - success (bool): True if listing succeeded
+                - files (List[str]): List of file paths inside archive
+                - count (int): Number of files found
+                - error (str): Error message if failed, empty string otherwise
+        
+        Example:
+            >>> success, files, count, error = merger._get_archive_file_list(
+            ...     Path('Data/ccBGSFO4001 - Main.ba2')
+            ... )
+            >>> if success:
+            ...     print(f"Archive contains {count} files")
+        """
         """Get the list of files in a BA2 archive using bsarch.
         
         Args:
@@ -283,7 +472,7 @@ class CCMerger:
                 return False, [], 0, f"BSArch failed: {result.stderr.strip() or 'Unknown error'}"
             
             # Parse the output - BSArch shows header info first, then file list
-            files = []
+            files: List[str] = []
             file_count = 0
             in_file_list = False
             
@@ -350,8 +539,36 @@ class CCMerger:
         except Exception as e:
             return False, 0, f"Error reading BA2 header: {e}"
 
-    def _verify_extraction(self, ba2_path: Path, extract_dir: Path, 
-                          progress_callback: Callable = None) -> Tuple[bool, str]:
+    def _verify_extraction(self, ba2_path: Path, extract_dir: Path,
+                          progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
+        """Verify that BA2 extraction completed successfully.
+        
+        Performs validation checks after extracting an archive to ensure:
+        - Files were actually extracted to the output directory
+        - The extraction appears complete
+        - The archive header and metadata are valid
+        
+        This method uses both file system checks and BSArch listing verification
+        to ensure extraction integrity.
+        
+        Args:
+            ba2_path (Path): Path to the BA2 archive that was extracted
+            extract_dir (Path): Directory where files should have been extracted
+            progress_callback (Callable, optional): Function for progress messages
+        
+        Returns:
+            Tuple containing:
+                - success (bool): True if verification passed
+                - message (str): Verification result message
+        
+        Example:
+            >>> ok, msg = merger._verify_extraction(
+            ...     Path('Data/ccBGSFO4001 - Main.ba2'),
+            ...     Path('Data/CC_Temp/General')
+            ... )
+            >>> if not ok:
+            ...     print(f"Verification failed: {msg}")
+        """
         """Verify that extraction completed by checking file counts.
         
         Args:
@@ -391,7 +608,7 @@ class CCMerger:
         return True, ""
 
     def verify_ba2_integrity(self, ba2_path: Path, 
-                             progress_callback: Callable = None) -> Tuple[bool, str]:
+                             progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
         """Verify a BA2 archive is valid and not corrupted.
         
         Args:
@@ -446,7 +663,7 @@ class CCMerger:
                 
                 # Use bsarch -list for additional validation
                 try:
-                    success, files, count, error = self._get_archive_file_list(ba2_path)
+                    success, _files, _count, error = self._get_archive_file_list(ba2_path)
                     if not success:
                         if progress_callback:
                             progress_callback(f"  Note: Could not list archive contents: {error}")
@@ -463,15 +680,196 @@ class CCMerger:
         except Exception as e:
             return False, f"Verification error: {e}"
 
-    def merge_cc_content(self, fo4_path, progress_callback):
-        """Main merge operation - combines CC archives into optimized merged archives.
+    def _find_cc_plugins(self, data_path: Path) -> List[Path]:
+        """Find all Creation Club plugin files in the Data folder.
+        
+        Searches for CC plugin files with extensions .esl, .esp, or .esm that
+        start with 'cc' (case-insensitive). Excludes CCPacked plugins created
+        by previous merge operations.
+        
+        This is the primary method for detecting CC content, as plugin files
+        are the canonical identifier for Creation Club items.
+        
+        Args:
+            data_path (Path): Path to Fallout 4/Data directory
+            
+        Returns:
+            List[Path]: List of paths to CC plugin files found
+        
+        Example:
+            >>> plugins = merger._find_cc_plugins(Path('C:/Games/Fallout 4/Data'))
+            >>> for p in plugins:
+            ...     print(p.name)  # e.g., 'ccBGSFO4001-PipBoy.esl'
+        """
+        """Find all Creation Club plugin files (esl, esp, esm) in Data folder.
+        
+        Args:
+            data_path: Path to Fallout 4/Data directory
+            
+        Returns:
+            List of Path objects for CC plugins found
+        """
+        cc_plugins: List[Path] = []
+        for ext in ['*.esl', '*.esp', '*.esm']:
+            # Find all CC plugins (starting with 'cc')
+            cc_plugins.extend([f for f in data_path.glob(f'cc{ext}') if not f.name.lower().startswith('ccpacked')])
+        return cc_plugins
+
+    def _validate_cc_content_integrity(self, data_path: Path, progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[List[str], List[str]]:
+        """Check if all CC plugins have their required BA2 archives.
+        
+        Args:
+            data_path: Path to Fallout 4/Data directory
+            progress_callback: Optional callback for progress messages
+            
+        Returns:
+            Tuple of (valid_cc_names, orphaned_cc_names)
+            where each name is the base CC identifier (e.g., 'ccBGSFO4001')
+        """
+        cc_plugins = self._find_cc_plugins(data_path)
+        
+        if progress_callback:
+            progress_callback(f"Found {len(cc_plugins)} Creation Club plugin(s).")
+        
+        valid_cc: List[str] = []
+        orphaned_cc: List[str] = []
+        
+        for plugin in cc_plugins:
+            # Extract base name (remove extension)
+            base_name = plugin.stem  # e.g., 'ccBGSFO4001-PipBoy(Pip-BoyPack01)'
+            
+            # Check for main BA2 (e.g., 'ccBGSFO4001-PipBoy(Pip-BoyPack01) - Main.ba2')
+            main_ba2 = data_path / f"{base_name} - Main.ba2"
+            
+            # Check for texture BA2 (e.g., 'ccBGSFO4001-PipBoy(Pip-BoyPack01) - Textures.ba2')
+            texture_ba2 = data_path / f"{base_name} - Textures.ba2"
+            
+            if main_ba2.exists() and texture_ba2.exists():
+                valid_cc.append(base_name)
+                if progress_callback:
+                    progress_callback(f"  ✓ {plugin.name} - Complete")
+            else:
+                orphaned_cc.append(base_name)
+                missing: List[str] = []
+                if not main_ba2.exists():
+                    missing.append("Main")
+                if not texture_ba2.exists():
+                    missing.append("Textures")
+                if progress_callback:
+                    progress_callback(f"  ✗ {plugin.name} - Missing: {', '.join(missing)}")
+        
+        return valid_cc, orphaned_cc
+
+    def _delete_orphaned_cc_content(self, data_path: Path, orphaned_cc_names: List[str], progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
+        """Delete all files associated with orphaned CC content.
+        
+        Args:
+            data_path: Path to Fallout 4/Data directory
+            orphaned_cc_names: List of base CC names to delete (e.g., ['ccBGSFO4001-PipBoy(Pip-BoyPack01)'])
+            progress_callback: Optional callback for progress messages
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        if not orphaned_cc_names:
+            return True, "No orphaned content to delete."
+        
+        deleted_count = 0
+        failed_deletions: List[str] = []
+        
+        for base_name in orphaned_cc_names:
+            files_to_delete: List[Path] = []
+            
+            # Plugin files (esl, esp, esm)
+            for ext in ['.esl', '.esp', '.esm']:
+                plugin_file = data_path / f"{base_name}{ext}"
+                if plugin_file.exists():
+                    files_to_delete.append(plugin_file)
+            
+            # BA2 archives (Main and Textures)
+            main_ba2 = data_path / f"{base_name} - Main.ba2"
+            texture_ba2 = data_path / f"{base_name} - Textures.ba2"
+            if main_ba2.exists():
+                files_to_delete.append(main_ba2)
+            if texture_ba2.exists():
+                files_to_delete.append(texture_ba2)
+            
+            # Delete all found files
+            for file_path in files_to_delete:
+                try:
+                    file_path.unlink()
+                    deleted_count += 1
+                    if progress_callback:
+                        progress_callback(f"  Deleted: {file_path.name}")
+                except Exception as e:
+                    failed_deletions.append(f"{file_path.name}: {e}")
+                    if progress_callback:
+                        progress_callback(f"  Failed to delete {file_path.name}: {e}")
+        
+        if failed_deletions:
+            return False, f"Deleted {deleted_count} files, but {len(failed_deletions)} deletions failed:\n" + "\n".join(failed_deletions)
+        
+        return True, f"Successfully deleted {deleted_count} orphaned CC files."
+
+    def merge_cc_content(self, fo4_path: str, progress_callback: Callable[[str], None]) -> Dict[str, Any]:
+        """Main merge operation - combines Creation Club archives into optimized merged archives.
+        
+        This is the core method that orchestrates the complete merge process:
+        
+        1. **Validation**: Validates CC content integrity by checking that each plugin
+           has both Main and Textures BA2 files
+        2. **Cleanup**: Removes old CCPacked files from previous merges
+        3. **Backup**: Creates timestamped backup of all original CC files
+        4. **Extraction**: Extracts all CC archives to temporary directories
+        5. **Content Separation**: 
+           - STRINGS files -> Moved to Data/Strings as loose files (required by game)
+           - Sound files (.xwm, .wav, .fuz, .lip) -> Separated for uncompressed packing
+           - Textures (.dds) -> Kept separate for DX10 archive type
+           - General content -> Everything else
+        6. **Repacking**:
+           - Sounds: Uncompressed General BA2 (for compatibility)
+           - Main: Compressed General BA2 (meshes, scripts, etc.)
+           - Textures: Compressed DX10 BA2(s), split at 7GB to respect game limits
+        7. **Plugin Creation**: Creates minimal ESL files for each merged archive
+        8. **Game Configuration**: Updates plugins.txt to enable the ESL files
+        9. **Cleanup**: Deletes original CC files and temporary directories
+        
+        Archive Naming Convention (v2.0+):
+        - CCPacked_Sounds.esl + CCPacked_Sounds - Main.ba2 (if sound files exist)
+        - CCPacked_Main.esl + CCPacked_Main - Main.ba2 (general content)
+        - CCPacked_Main_Textures1.esl + CCPacked_Main_Textures1 - Textures.ba2 (first texture batch)
+        - CCPacked_Main_Textures2.esl + CCPacked_Main_Textures2 - Textures.ba2 (second batch, if needed)
+        - etc.
+        
+        Legacy v1.x naming used CCMerged prefix, which is cleaned up during merge/restore
+        to support seamless upgrades.
+        
+        Performance Benefits:
+        - Reduces plugin count from potentially dozens to 2-5 plugins
+        - Improves load times by consolidating archives
+        - Reduces game startup time and memory usage
+        - Maintains full compatibility with all CC content
         
         Args:
             fo4_path: Path to Fallout 4 installation directory
-            progress_callback: Callback function for progress updates
+            progress_callback: Callback function(str) for progress updates
             
         Returns:
-            Dict with 'success' bool and either 'summary' or 'error'
+            Dict containing:
+                On success:
+                    - 'success': True
+                    - 'summary': Dict with 'archives_created', 'files_processed', 'esls_created'
+                On failure:
+                    - 'success': False
+                    - 'error': Error message string
+        
+        Example:
+            >>> result = merger.merge_cc_content(
+            ...     'C:/Games/Fallout 4',
+            ...     lambda msg: print(msg)
+            ... )
+            >>> if result['success']:
+            ...     print(f\"Created {result['summary']['archives_created']} archives\")
         """
         data_path = Path(fo4_path) / "Data"
         backup_dir = data_path / "CC_Backup"
@@ -487,18 +885,33 @@ class CCMerger:
         except BSArchError as e:
             return {"success": False, "error": str(e)}
 
-        # 1. Identify CC Files (exclude CCMerged files created by this tool)
-        all_cc_files = list(data_path.glob("cc*.ba2"))
-        # Filter out any CCPacked archives to prevent re-packing previously merged content
-        cc_files = [f for f in all_cc_files if not f.name.lower().startswith("ccpacked")]
+        # 1. Validate CC Content Integrity - Check for plugins and their BA2 files
+        progress_callback("Validating Creation Club content integrity...")
+        valid_cc, orphaned_cc = self._validate_cc_content_integrity(data_path, progress_callback)
         
-        if not cc_files:
-            if all_cc_files:
+        # Note: Orphaned content should have been handled by UI before this point
+        # If there are still orphaned items, skip them and continue with valid ones
+        if orphaned_cc:
+            progress_callback(f"Warning: Skipping {len(orphaned_cc)} incomplete CC item(s).")
+        
+        # Check if we have any valid CC content to merge
+        if not valid_cc:
+            # Check if we have CCPacked files
+            existing_merged = list(data_path.glob("CCPacked*.ba2"))
+            if existing_merged:
                 return {"success": False, "error": "Only previously merged (CCPacked) archives found. No new CC files to merge."}
             else:
-                return {"success": False, "error": "No Creation Club (cc*.ba2) files found."}
-
-        progress_callback(f"Found {len(cc_files)} CC archives.")
+                return {"success": False, "error": "No Creation Club content found."}
+        
+        progress_callback(f"Found {len(valid_cc)} complete Creation Club item(s) ready to merge.")
+        
+        # Build list of BA2 files from valid CC plugins
+        cc_files: List[Path] = []
+        for base_name in valid_cc:
+            main_ba2 = data_path / f"{base_name} - Main.ba2"
+            texture_ba2 = data_path / f"{base_name} - Textures.ba2"
+            cc_files.append(main_ba2)
+            cc_files.append(texture_ba2)
 
         # Check if merged files already exist (optional cleanup warning)
         existing_merged = list(data_path.glob("CCPacked*.ba2"))
@@ -507,22 +920,25 @@ class CCMerger:
 
         # 2. Clean up old merged files and their ESLs
         progress_callback("Cleaning up old merged files...")
-        for f in data_path.glob("CCPacked*.*"):
-            try:
-                f.unlink()
-            except Exception as e:
-                progress_callback(f"Warning: Could not delete {f.name}: {e}")
+        # Clean up both v2.0 (CCPacked) and v1.x (CCMerged) files
+        for pattern in ["CCPacked*.*", "CCMerged*.*"]:
+            for f in data_path.glob(pattern):
+                try:
+                    f.unlink()
+                except Exception as e:
+                    progress_callback(f"Warning: Could not delete {f.name}: {e}")
 
         # Also clean up old STRINGS files
         strings_dir = data_path / "Strings"
         if strings_dir.exists():
-            for f in strings_dir.glob("CCPacked*.*"):
-                try:
-                    f.unlink()
-                except Exception as e:
-                    progress_callback(f"Warning: Could not delete STRINGS file {f.name}: {e}")
+            for pattern in ["CCPacked*.*", "CCMerged*.*"]:
+                for f in strings_dir.glob(pattern):
+                    try:
+                        f.unlink()
+                    except Exception as e:
+                        progress_callback(f"Warning: Could not delete STRINGS file {f.name}: {e}")
 
-        # 3. Backup
+        # 3. Backup - Back up BA2 files only (plugin files remain in place)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         current_backup = backup_dir / timestamp
         current_backup.mkdir(parents=True, exist_ok=True)
@@ -541,8 +957,8 @@ class CCMerger:
         general_dir.mkdir()
         textures_dir.mkdir()
 
-        main_ba2s = [f for f in cc_files if "texture" not in f.name.lower()]
-        texture_ba2s = [f for f in cc_files if "texture" in f.name.lower()]
+        main_ba2s: List[Path] = [f for f in cc_files if "texture" not in f.name.lower()]
+        texture_ba2s: List[Path] = [f for f in cc_files if "texture" in f.name.lower()]
 
         # Extract Main archives with verification after each
         for i, f in enumerate(main_ba2s):
@@ -579,7 +995,7 @@ class CCMerger:
         target_strings_dir = data_path / "Strings"
         target_strings_dir.mkdir(exist_ok=True)
         
-        moved_strings = []
+        moved_strings: List[str] = []
         # Recursively find all string files
         for f in general_dir.rglob("*"):
             if f.is_file() and f.suffix.lower() in ['.strings', '.dlstrings', '.ilstrings']:
@@ -603,7 +1019,7 @@ class CCMerger:
         # 5. Separate Sounds (Uncompressed)
         sounds_dir = temp_dir / "Sounds"
         sounds_dir.mkdir(exist_ok=True)
-        sound_files = []
+        sound_files: List[Path] = []
         
         progress_callback("Separating sound files...")
         for f in general_dir.rglob("*"):
@@ -614,10 +1030,10 @@ class CCMerger:
                 shutil.move(f, target_path)
                 sound_files.append(target_path)
         
-        created_esls = []
+        created_esls: List[str] = []
 
         # 6. Repack Sounds (Uncompressed)
-        created_archives = []  # Track created archives for verification
+        created_archives: List[Path] = []  # Track created archives for verification
         
         if sound_files:
             output_name_sounds = "CCPacked_Sounds"
@@ -634,7 +1050,7 @@ class CCMerger:
             created_esls.append(sounds_esl)
 
         # 7. Repack Main (Compressed)
-        output_name = "CCPacked"
+        output_name = "CCPacked_Main"
         merged_main = data_path / f"{output_name} - Main.ba2"
         
         if list(general_dir.rglob("*")):
@@ -651,7 +1067,7 @@ class CCMerger:
             created_esls.append(main_esl)
 
         # 8. Repack Textures (Smart Splitting with Vanilla-style Naming)
-        texture_files = []
+        texture_files: List[Tuple[Path, int]] = []
         for f in textures_dir.rglob("*"):
             if f.is_file():
                 texture_files.append((f, f.stat().st_size))
@@ -659,8 +1075,8 @@ class CCMerger:
         # Split textures by 7GB uncompressed (typically compresses to ~3.5GB)
         MAX_SIZE = int(7.0 * 1024 * 1024 * 1024) 
         
-        groups = []
-        current_group = []
+        groups: List[List[Path]] = []
+        current_group: List[Path] = []
         current_size = 0
         
         for f_path, f_size in texture_files:
@@ -711,8 +1127,8 @@ class CCMerger:
         progress_callback("Enabling plugins...")
         self._add_to_plugins_txt(created_esls)
 
-        # 10. Cleanup
-        progress_callback("Cleaning up original CC files...")
+        # 10. Cleanup - Delete original CC BA2 files only (plugin files remain)
+        progress_callback("Cleaning up original CC BA2 files...")
         for f in cc_files:
             try:
                 f.unlink()
@@ -734,7 +1150,45 @@ class CCMerger:
 
         return {"success": True, "summary": summary}
 
-    def restore_backup(self, fo4_path, progress_callback):
+    def restore_backup(self, fo4_path: str, progress_callback: Callable[[str], None]) -> Dict[str, Any]:
+        """Restore Creation Club content from the most recent backup.
+        
+        This method reverses a merge operation by:
+        1. **Finding Latest Backup**: Locates the most recent timestamped backup
+        2. **Removing Merged Content**:
+           - Deletes all CCPacked BA2 archives
+           - Deletes CCPacked ESL plugin files
+           - Cleans up CCPacked STRINGS files
+           - Removes extracted STRINGS files that were part of merged content
+        3. **Restoring Original Files**:
+           - Copies original CC BA2 archives back to Data folder
+           - Restores original CC plugin files (ESL/ESP/ESM)
+        4. **Updating Game Configuration**: Removes CCPacked entries from plugins.txt
+        5. **Cleanup**: Deletes old backups, keeping only the most recent
+        
+        The restore process is safe and will always keep at least one backup.
+        Users can merge again after restoring to re-create optimized archives.
+        
+        Args:
+            fo4_path: Path to Fallout 4 installation directory
+            progress_callback: Callback function(str) for progress updates
+            
+        Returns:
+            Dict containing:
+                On success:
+                    - 'success': True
+                On failure:
+                    - 'success': False
+                    - 'error': Error message string
+        
+        Example:
+            >>> result = merger.restore_backup(
+            ...     'C:/Games/Fallout 4',
+            ...     lambda msg: print(msg)
+            ... )
+            >>> if result['success']:
+            ...     print("CC content restored successfully")
+        """
         data_path = Path(fo4_path) / "Data"
         backup_dir = data_path / "CC_Backup"
         
@@ -749,22 +1203,24 @@ class CCMerger:
         latest_backup = backups[0]
         progress_callback(f"Restoring from {latest_backup.name}...")
 
-        # Delete merged files
-        merged_esls = []
-        for f in data_path.glob("CCPacked*.*"):
-            if f.suffix.lower() == ".esl":
-                merged_esls.append(f.name)
-            f.unlink()
+        # Delete merged files (both v2.0 CCPacked and v1.x CCMerged)
+        merged_esls: List[str] = []
+        for pattern in ["CCPacked*.*", "CCMerged*.*"]:
+            for f in data_path.glob(pattern):
+                if f.suffix.lower() == ".esl":
+                    merged_esls.append(f.name)
+                f.unlink()
 
         # Delete merged STRINGS files
         strings_dir = data_path / "Strings"
         if strings_dir.exists():
-            for f in strings_dir.glob("CCPacked*.*"):
-                try:
-                    f.unlink()
-                    progress_callback(f"Removed STRINGS file: {f.name}")
-                except Exception as e:
-                    progress_callback(f"Warning: Could not delete {f.name}: {e}")
+            for pattern in ["CCPacked*.*", "CCMerged*.*"]:
+                for f in strings_dir.glob(pattern):
+                    try:
+                        f.unlink()
+                        progress_callback(f"Removed STRINGS file: {f.name}")
+                    except Exception as e:
+                        progress_callback(f"Warning: Could not delete {f.name}: {e}")
 
             # Clean up extracted STRINGS files
             manifest_file = latest_backup / "moved_strings.txt"
@@ -789,7 +1245,7 @@ class CCMerger:
 
         # Restore files
         backup_files = list(latest_backup.glob("*"))
-        for i, f in enumerate(backup_files):
+        for f in backup_files:
             if f.name == "moved_strings.txt":
                 continue
             shutil.copy2(f, data_path / f.name)
@@ -812,7 +1268,23 @@ class CCMerger:
             return None
         return Path(local_app_data) / "Fallout4" / "plugins.txt"
 
-    def _add_to_plugins_txt(self, esl_names):
+    def _add_to_plugins_txt(self, esl_names: List[str]) -> None:
+        """Add ESL plugin entries to plugins.txt for game to load them.
+        
+        Modifies the game's plugins.txt file (in AppData/Local/Fallout4) to include
+        the merged archive ESL files. This ensures the game loads the merged BA2
+        archives when it starts.
+        
+        If plugins.txt doesn't exist, it's created. Entries are only added if they
+        don't already exist (idempotent operation).
+        
+        Args:
+            esl_names: List of ESL filenames to add (e.g., ['CCPacked_Main.esl'])
+        
+        Note:
+            The method handles both cases where plugins.txt has a UTF-8 BOM and
+            where it doesn't, preserving the existing format.
+        """
         plugins_txt = self._get_plugins_txt()
         if not plugins_txt or not plugins_txt.parent.exists():
             return
@@ -840,7 +1312,22 @@ class CCMerger:
             except Exception as e:
                 self.logger.error(f"Failed to write plugins.txt: {e}")
 
-    def _remove_from_plugins_txt(self, esl_names):
+    def _remove_from_plugins_txt(self, esl_names: List[str]) -> None:
+        """Remove ESL plugin entries from plugins.txt.
+        
+        Removes the merged archive ESL entries from the game's plugins.txt file
+        during restore operations. This prevents the game from trying to load
+        archives that no longer exist.
+        
+        If plugins.txt doesn't exist or doesn't contain the specified entries,
+        the method safely returns without error (idempotent operation).
+        
+        Args:
+            esl_names: List of ESL filenames to remove (e.g., ['CCPacked_Main.esl'])
+        
+        Note:
+            Preserves UTF-8 BOM if it exists in the original file.
+        """
         plugins_txt = self._get_plugins_txt()
         if not plugins_txt or not plugins_txt.exists():
             return
@@ -851,7 +1338,7 @@ class CCMerger:
         except:
             return
 
-        new_lines = []
+        new_lines: List[str] = []
         modified = False
         for line in lines:
             clean_line = line.lstrip("*")
@@ -867,7 +1354,31 @@ class CCMerger:
             except Exception as e:
                 self.logger.error(f"Failed to write plugins.txt: {e}")
 
-    def _create_vanilla_esl(self, path):
+    def _create_vanilla_esl(self, path: Path) -> None:
+        """Create a minimal ESL plugin file for merged archives.
+        
+        Creates a dummy ESL (Elder Scrolls Light) plugin file that serves to
+        make the game engine load the associated BA2 archive. The ESL contains
+        only a minimal header and no actual game data.
+        
+        Fallout 4 requires a plugin file to exist for any BA2 archive to be loaded.
+        These placeholder ESLs ensure our merged archives are recognized by the game.
+        
+        The ESL format includes:
+        - TES4 header record
+        - Version number (1.0)
+        - Minimal flags for ESL format
+        - Dummy master file reference
+        - Author and description fields
+        
+        Args:
+            path: Path where the ESL file should be created
+        
+        Note:
+            The created ESL does not need STRINGS files because it contains no
+            localized text. All actual strings remain in the original loose files
+            or within the merged archives.
+        """
         # Create vanilla-compatible ESL matching Bethesda's format exactly
         # Reference: https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format/TES4
         data = bytearray()

@@ -5,6 +5,56 @@ All notable changes to CC-Packer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Orphaned CC Content Detection**: CC-Packer now validates Creation Club content integrity before merging by checking that each CC plugin file has both required BA2 archives (Main and Textures). Incomplete or orphaned items are detected and reported to the user.
+- **Automatic Orphaned Content Cleanup**: When incomplete CC items are detected, users are presented with a detailed warning dialog that includes:
+  - List of affected CC items with missing files
+  - Explanation of the issue (known Fallout 4 download engine bug)
+  - Clickable link to CC-Packer documentation for more information
+  - Three action options:
+    - Delete Orphaned CC Content And Quit
+    - Delete Orphaned CC Content and Continue (merges remaining valid items)
+    - Quit CC Packer Now
+- **Plugin-First Detection**: Changed from BA2-first to plugin-first detection. CC content is now identified by finding plugin files (cc*.esl, cc*.esp, cc*.esm) and validating their BA2 archives exist, providing more accurate detection of Creation Club items.
+- **Comprehensive Code Documentation**: Added extensive human-readable documentation to all Python modules including:
+  - Detailed module-level docstrings explaining architecture and purpose
+  - Complete class documentation with attribute descriptions
+  - Method docstrings with Args, Returns, Examples, and Notes sections
+  - Inline comments explaining complex logic and algorithms
+  - Usage examples for key functions
+- **Smart Mixed Content Handling**: When both CCPacked archives and new unmerged CC files are detected, users are now prompted with an option to automatically restore and repack all CC items together. This ensures optimal results when adding new Creation Club content after a previous merge.
+
+### Changed
+
+- **Content Detection Method**: Refactored merge process to detect Creation Club content by scanning for plugin files (cc*.esl, cc*.esp, cc*.esm) first, then validating that each has its required BA2 archives. Previously scanned for cc*.ba2 files directly. Note: Plugin files remain in the Data folder as they contain the actual game records; only BA2 asset archives are merged.
+- **Validation Workflow**: Integrity validation now occurs before merge process starts, allowing users to address issues before any file operations begin.
+
+### Improved
+
+- **Error Messages**: Orphaned content warnings now provide detailed information about which files are missing for each CC item (Main BA2, Textures BA2, or both).
+- **User Guidance**: Integrated contextual help with clickable links to documentation for resolving common issues.
+- **Code Maintainability**: Comprehensive documentation throughout codebase makes it easier for developers to understand and modify the application.
+- **Validation Accuracy**: Plugin-first detection provides more reliable identification of incomplete downloads compared to BA2-only scanning.
+
+### Technical Details
+
+- Added `_find_cc_plugins()` method to scan for CC plugin files (.esl, .esp, .esm)
+- Added `_validate_cc_content_integrity()` method that returns lists of valid and orphaned CC items
+- Added `_delete_orphaned_cc_content()` method for automatic cleanup of incomplete CC items
+- Added `_handle_orphaned_cc_content()` in main.py for user interaction and cleanup workflow
+- Merge process now builds BA2 file list from validated plugins rather than directory scanning
+- Original CC plugin files remain in Data folder (they contain game records); only BA2 archives are merged and deleted
+- All new methods include comprehensive docstrings with Args, Returns, Examples, and Notes
+- Module-level docstrings added to main.py and merger.py explaining architecture and design decisions
+
+### Fixed
+
+- **Main Archive ESL Conflict**: Renamed main archive from `CCPacked.esl` / `CCPacked - Main.ba2` to `CCPacked_Main.esl` / `CCPacked_Main - Main.ba2`. Previously, `CCPacked.esl` was activating all BA2 archives due to prefix matching (including `CCPacked_Sounds - Main.ba2` and `CCPacked_Textures1 - Textures.ba2`). Each archive now has a unique prefix ensuring proper isolation.
+- **v1.x Upgrade Cleanup**: Fixed issue where users upgrading from v1.x would have leftover `CCMerged*` files. The merge and restore operations now properly delete old v1.x `CCMerged` files alongside v2.0 `CCPacked` files.
+
 ## [2.0.0] - 2026-01-30
 
 ### Added

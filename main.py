@@ -1,23 +1,71 @@
+"""CC Packer - Main GUI Application
+
+This module provides the graphical user interface for CC Packer, a tool that merges
+Fallout 4 Creation Club content into optimized archive files to improve game performance
+and reduce plugin count.
+
+The application uses PyQt6 for the GUI and runs merge/restore operations in background
+threads to keep the interface responsive.
+
+Classes:
+    MergeWorker: Background thread worker for merge operations
+    RestoreWorker: Background thread worker for restore operations
+    MainWindow: Main application window with UI and controls
+
+Author: CC Packer Development Team
+Version: 2.0
+License: See LICENSE file
+"""
+
 import sys
 import os
-import logging
 import ctypes
+from typing import Dict, Any, List, Optional
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                             QTextEdit, QFileDialog, QMessageBox)
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from merger import CCMerger
 
+
 class MergeWorker(QThread):
+    """Background worker thread for performing CC content merge operations.
+    
+    This worker runs the merge process in a separate thread to prevent the UI from
+    freezing during lengthy archive extraction and repacking operations.
+    
+    Signals:
+        progress (str): Emitted during merge to report progress messages
+        finished (bool, str): Emitted when merge completes with success status and message
+    
+    Attributes:
+        merger (CCMerger): The merger instance that performs the actual work
+        fo4_path (str): Path to the Fallout 4 installation directory
+    """
     progress = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, merger, fo4_path):
+    def __init__(self, merger: CCMerger, fo4_path: str) -> None:
+        """Initialize the merge worker.
+        
+        Args:
+            merger (CCMerger): Instance of CCMerger to use for operations
+            fo4_path (str): Path to Fallout 4 installation directory
+        """
         super().__init__()
         self.merger = merger
         self.fo4_path = fo4_path
 
     def run(self):
+        """Execute the merge operation in the background thread.
+        
+        This method calls the merger's merge_cc_content() method and emits signals
+        to report progress and completion status back to the main thread.
+        
+        Emits:
+            progress: Progress messages during the merge operation
+            finished: Final result with (success: bool, message: str)
+        """
         try:
             result = self.merger.merge_cc_content(self.fo4_path, self.progress.emit)
             if result['success']:
@@ -27,16 +75,45 @@ class MergeWorker(QThread):
         except Exception as e:
             self.finished.emit(False, str(e))
 
+
 class RestoreWorker(QThread):
+    """Background worker thread for performing backup restore operations.
+    
+    This worker runs the restore process in a separate thread to prevent UI freezing
+    when restoring previously backed-up Creation Club files.
+    
+    Signals:
+        progress (str): Emitted during restore to report progress messages
+        finished (bool, str): Emitted when restore completes with success status and message
+    
+    Attributes:
+        merger (CCMerger): The merger instance that performs the actual work
+        fo4_path (str): Path to the Fallout 4 installation directory
+    """
     progress = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, merger, fo4_path):
+    def __init__(self, merger: CCMerger, fo4_path: str) -> None:
+        """Initialize the restore worker.
+        
+        Args:
+            merger (CCMerger): Instance of CCMerger to use for operations
+            fo4_path (str): Path to Fallout 4 installation directory
+        """
         super().__init__()
         self.merger = merger
         self.fo4_path = fo4_path
 
     def run(self):
+        """Execute the restore operation in the background thread.
+        
+        This method calls the merger's restore_backup() method and emits signals
+        to report progress and completion status back to the main thread.
+        
+        Emits:
+            progress: Progress messages during the restore operation
+            finished: Final result with (success: bool, message: str)
+        """
         try:
             result = self.merger.restore_backup(self.fo4_path, self.progress.emit)
             if result['success']:
@@ -46,14 +123,57 @@ class RestoreWorker(QThread):
         except Exception as e:
             self.finished.emit(False, str(e))
 
+
 class MainWindow(QMainWindow):
+    """Main application window for CC Packer.
+    
+    This class provides the primary user interface for CC Packer, including:
+    - Auto-detection of Fallout 4 installation path
+    - Display of current merge/backup status
+    - Merge and restore operation controls
+    - Real-time log output display
+    - Handling of orphaned Creation Club content
+    - Administrator privilege detection and warnings
+    
+    The window automatically detects the Fallout 4 installation using registry
+    keys and common installation paths, and displays the current state of
+    Creation Club content (merged vs. unmerged).
+    
+    Attributes:
+        merger (CCMerger): Instance of CCMerger for performing operations
+        fo4_input (QLineEdit): Input field for Fallout 4 path
+        merge_btn (QPushButton): Button to start merge operation
+        restore_btn (QPushButton): Button to start restore operation
+        log_output (QTextEdit): Text area for displaying log messages
+        worker (QThread): Currently running background worker thread
+    """
+    
     def __init__(self):
+        """Initialize the main window.
+        
+        Sets up the UI components, initializes the merger instance, and
+        attempts to auto-detect the Fallout 4 installation path.
+        """
         super().__init__()
+        self.setWindowTitle("CC-Packer v2.0")
+        self.setGeometry(100, 100, 800, 600)
         self.merger = CCMerger()
+        self.worker = None
+        self._pending_merge_after_restore = False
         self.init_ui()
         self.detect_paths()
 
     def init_ui(self):
+        """Initialize and configure the user interface.
+        
+        Creates all UI components including:
+        - Application header
+        - Fallout 4 directory selection controls
+        - Merge and Restore buttons
+        - Log output text area
+        
+        The UI uses PyQt6 layouts for responsive design.
+        """
         self.setWindowTitle("CC Packer v2.0")
         self.setMinimumSize(600, 500)
 
@@ -96,7 +216,12 @@ class MainWindow(QMainWindow):
         self.log_output.setReadOnly(True)
         layout.addWidget(self.log_output)
 
-    def log(self, message):
+    def log(self, message: str) -> None:
+        """Append a message to the log output display.
+        
+        Args:
+            message (str): The message to display in the log
+        """
         self.log_output.append(message)
 
     def _disable_buttons(self):
@@ -104,16 +229,32 @@ class MainWindow(QMainWindow):
         self.merge_btn.setEnabled(False)
         self.restore_btn.setEnabled(False)
 
-    def _check_existing_backup(self, fo4_path):
-        """Check for existing backups and CC file states.
+    def _check_existing_backup(self, fo4_path: str) -> Dict[str, Any]:
+        """Check for existing backups and Creation Club file states.
+        
+        Scans the Data folder to identify:
+        - Previously merged CCPacked archives
+        - Unmerged CC content (cc*.ba2 files)
+        - Available backups in CC_Backup folder
+        
+        This information is used to determine the current state and enable/disable
+        appropriate UI controls.
+        
+        Args:
+            fo4_path (str): Path to Fallout 4 installation directory
         
         Returns:
-            dict with keys:
-                - 'has_ccmerged': bool - If CCPacked files exist
-                - 'has_other_cc': bool - If other cc*.ba2 files exist (excluding CCPacked)
-                - 'backup_count': int - Number of existing backups
-                - 'ccmerged_files': list - Names of CCPacked files found
-                - 'other_cc_files': list - Names of other CC files found
+            dict: Dictionary containing:
+                - 'has_ccmerged' (bool): True if CCPacked files exist (variable name is legacy)
+                - 'has_other_cc' (bool): True if unmerged cc*.ba2 files exist
+                - 'backup_count' (int): Number of existing backups
+                - 'ccmerged_files' (list): Names of CCPacked files found (variable name is legacy)
+                - 'other_cc_files' (list): Names of other CC files found
+        
+        Note:
+            Variable names use legacy 'ccmerged' naming for backward compatibility,
+            but they track 'CCPacked' files in v2.0+. Also handles legacy 'CCMerged'
+            files from v1.x for upgrade scenarios.
         """
         from pathlib import Path
         data_path = Path(fo4_path) / "Data"
@@ -151,8 +292,25 @@ class MainWindow(QMainWindow):
             'other_cc_files': other_cc_files
         }
 
-    def _show_merge_status(self, fo4_path):
-        """Display the current merge/backup status and update button states."""
+    def _show_merge_status(self, fo4_path: str) -> None:
+        """Display the current merge/backup status and update button states.
+        
+        Analyzes the current state of CC content and backups, then:
+        - Logs status messages to the output display
+        - Enables/disables the merge button based on current state
+        - Enables/disables the restore button based on backup availability
+        - Sets tooltips to explain button states
+        
+        States handled:
+        - All files merged (disable merge button)
+        - Mixed merged/unmerged files (enable merge with warning)
+        - No merged files (normal state, merge enabled)
+        - Backups available (enable restore)
+        - No backups (disable restore)
+        
+        Args:
+            fo4_path (str): Path to Fallout 4 installation directory
+        """
         status = self._check_existing_backup(fo4_path)
         
         # Build status message for log
@@ -192,41 +350,85 @@ class MainWindow(QMainWindow):
             self.restore_btn.setEnabled(False)
             self.restore_btn.setToolTip("No backups available")
 
-    def _handle_merge_with_mixed_files(self, fo4_path):
-        """Handle merge attempt when both CCMerged and other CC files exist.
+    def _handle_merge_with_mixed_files(self, fo4_path: str) -> str:
+        """Handle merge attempt when both CCPacked and other CC files exist.
+        
+        When the user attempts to merge while CCPacked archives already exist
+        alongside unmerged CC files, this displays a dialog with options to:
+        1. Restore backup and repack all CC items together (recommended)
+        2. Cancel the merge operation
+        
+        This prevents creating multiple sets of merged archives which could
+        cause conflicts or confusion.
+        
+        Args:
+            fo4_path (str): Path to Fallout 4 installation directory
         
         Returns:
-            True if user wants to continue with merge
-            False if user cancels
+            str: 'restore_and_merge' if user wants to restore+merge,
+                 'cancel' if user wants to cancel,
+                 'continue' if no mixed files detected (normal flow)
         """
         status = self._check_existing_backup(fo4_path)
         
         if status['has_ccmerged'] and status['has_other_cc']:
-            reply = QMessageBox.warning(
-                self,
-                "Merged Files Already Exist",
-                f"Found {len(status['ccmerged_files'])} merged archive(s) and "
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Mixed CC Content Detected")
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            
+            message = (
+                f"Found {len(status['ccmerged_files'])} merged (CCPacked) archive(s) and "
                 f"{len(status['other_cc_files'])} unmerged CC file(s).\n\n"
-                "This will create new merged archives.\n"
-                "It is recommended to RESTORE your backup first,\n"
-                "then merge all files together.\n\n"
-                "Continue anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
+                "To properly merge additional CC content with your existing merged files, "
+                "you need to restore your backup first, then repack everything together.\n\n"
+                "What would you like to do?"
             )
-            return reply == QMessageBox.StandardButton.Yes
+            
+            msg_box.setText(message)
+            
+            # Add custom buttons
+            restore_merge_btn = msg_box.addButton("Restore and Repack All CC Items", QMessageBox.ButtonRole.AcceptRole)
+            cancel_btn = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            
+            msg_box.setDefaultButton(cancel_btn)
+            msg_box.exec()
+            
+            clicked = msg_box.clickedButton()
+            
+            if clicked == restore_merge_btn:
+                return 'restore_and_merge'
+            else:
+                return 'cancel'
         
-        return True
+        return 'continue'
 
     def _is_admin(self):
-        """Check if the application is running with administrator privileges."""
+        """Check if the application is running with administrator privileges.
+        
+        Uses Windows API to determine if the current process has admin rights.
+        This is important for detecting potential permission issues when Fallout 4
+        is installed in protected directories like Program Files.
+        
+        Returns:
+            bool: True if running as administrator, False otherwise
+        """
         try:
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
         except:
             return False
 
-    def _is_protected_path(self, path):
-        """Check if a path is in a Windows-protected location."""
+    def _is_protected_path(self, path: str) -> bool:
+        """Check if a path is in a Windows-protected location.
+        
+        Determines if the given path is under a Windows-protected directory
+        such as Program Files, Program Files (x86), or Windows.
+        
+        Args:
+            path (str): Path to check
+        
+        Returns:
+            bool: True if path is in a protected location, False otherwise
+        """
         protected_prefixes = [
             os.environ.get('ProgramFiles', r'C:\Program Files'),
             os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)'),
@@ -235,8 +437,19 @@ class MainWindow(QMainWindow):
         path_lower = path.lower()
         return any(path_lower.startswith(p.lower()) for p in protected_prefixes if p)
 
-    def _check_elevation_needed(self, path):
-        """Warn user if elevation may be required for the given path."""
+    def _check_elevation_needed(self, path: str) -> bool:
+        """Warn user if elevation may be required for the given path.
+        
+        If Fallout 4 is installed in a protected location and CC Packer is not
+        running as administrator, displays a warning dialog advising the user
+        to run as administrator to avoid permission errors.
+        
+        Args:
+            path (str): Path to Fallout 4 installation directory
+        
+        Returns:
+            bool: True if warning was displayed, False otherwise
+        """
         if self._is_protected_path(path) and not self._is_admin():
             QMessageBox.warning(
                 self,
@@ -251,6 +464,19 @@ class MainWindow(QMainWindow):
         return False
 
     def detect_paths(self):
+        """Auto-detect Fallout 4 installation path using multiple methods.
+        
+        Attempts to locate Fallout 4 using the following methods in order:
+        1. Bethesda registry keys (both 64-bit and 32-bit)
+        2. Steam library folders (by parsing libraryfolders.vdf)
+        3. Common hardcoded installation paths
+        
+        If a valid path is found, it's automatically populated in the UI and
+        the current merge status is displayed. Also checks if administrator
+        privileges may be required.
+        
+        The detection is automatic and runs when the application starts.
+        """
         # Try to detect FO4 via registry
         import winreg
         
@@ -329,13 +555,125 @@ class MainWindow(QMainWindow):
             self.log("Fallout 4 not found. Please browse to select.")
 
     def browse_fo4(self):
+        """Open directory browser dialog for manual Fallout 4 path selection.
+        
+        Allows the user to manually select the Fallout 4 installation directory
+        if auto-detection fails or if they want to work with a different installation.
+        
+        After selection, updates the UI with the merge status and checks for
+        elevation requirements.
+        """
         path = QFileDialog.getExistingDirectory(self, "Select Fallout 4 Directory")
         if path:
             self.fo4_input.setText(path)
             self._show_merge_status(path)
             self._check_elevation_needed(path)
 
+    def _handle_orphaned_cc_content(self, fo4_path: str, orphaned_names: List[str]) -> Optional[str]:
+        """Show warning dialog for orphaned CC content and handle user choice.
+        
+        Args:
+            fo4_path: Path to Fallout 4 installation
+            orphaned_names: List of CC base names that are missing BA2 files
+            
+        Returns:
+            'continue' - Continue with merge (orphaned content deleted)
+            'quit' - User chose to quit
+            None - User cancelled or error occurred
+        """
+        from pathlib import Path
+        
+        # Format the list of orphaned items
+        orphaned_list = "\n".join([f"  • {name}" for name in orphaned_names])
+        
+        # Create custom message box with clickable link
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Incomplete Creation Club Content Detected")
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        
+        # Build message with rich text for clickable link
+        message = (
+            "The following Creation Club items are missing their required BA2 archive files:\n\n"
+            f"{orphaned_list}\n\n"
+            "You may continue, but these items will not function and may cause instability "
+            "or crashing until you have deleted and re-downloaded them from the Creations Shop "
+            "on the Fallout 4 main menu.\n\n"
+            "Note that this is not an issue with CC Packer; it is a known issue with the "
+            "download engine built into the game.\n\n"
+            "I can automatically delete the affected incomplete CC items for you, I can delete them "
+            "and continue packing the remaining files, or you can quit CC Packer to do the deletions "
+            "and re-download them yourself.\n\n"
+            'See the <a href="https://www.nexusmods.com/fallout4/mods/98589?tab=description">CC Packer main page</a> '
+            "on Nexus Mods for more information."
+        )
+        
+        msg_box.setText(message)
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        
+        # Add custom buttons
+        delete_quit_btn = msg_box.addButton("Delete Orphaned CC Content And Quit", QMessageBox.ButtonRole.DestructiveRole)
+        delete_continue_btn = msg_box.addButton("Delete Orphaned CC Content and Continue", QMessageBox.ButtonRole.AcceptRole)
+        _quit_btn = msg_box.addButton("Quit CC Packer Now", QMessageBox.ButtonRole.RejectRole)
+        
+        msg_box.exec()
+        clicked = msg_box.clickedButton()
+        
+        # Handle user choice
+        data_path = Path(fo4_path) / "Data"
+        
+        if clicked == delete_quit_btn or clicked == delete_continue_btn:
+            # Delete orphaned content
+            self.log("Deleting orphaned Creation Club content...")
+            success, message = self.merger._delete_orphaned_cc_content(
+                data_path, orphaned_names, self.log
+            )
+            
+            if not success:
+                QMessageBox.critical(
+                    self,
+                    "Deletion Failed",
+                    f"Failed to delete some orphaned content:\n\n{message}\n\n"
+                    "You may need to run CC Packer as Administrator."
+                )
+                return None
+            
+            self.log(message)
+            
+            if clicked == delete_quit_btn:
+                self.log("User chose to quit after deletion.")
+                return 'quit'
+            else:
+                self.log("Continuing with merge after deletion...")
+                return 'continue'
+        
+        else:  # quit_btn
+            self.log("User chose to quit without deletion.")
+            return 'quit'
+
     def start_merge(self):
+        """Initiate the Creation Club content merge process.
+        
+        This method orchestrates the complete merge workflow:
+        1. Validates the Fallout 4 path
+        2. Checks current backup/merge status
+        3. Handles mixed merged/unmerged file states
+        4. Validates CC content integrity (checks for orphaned files)
+        5. Presents orphaned content warning dialog if needed
+        6. Allows user to clean up orphaned content
+        7. Launches the merge worker thread if validation passes
+        
+        The actual merge operation runs in a background thread (MergeWorker)
+        to keep the UI responsive during lengthy archive operations.
+        
+        User flow for orphaned content:
+        - If incomplete CC items are found, user can choose to:
+          a) Delete orphaned content and quit
+          b) Delete orphaned content and continue merging
+          c) Quit without changes
+        - After deletion, re-validates to ensure cleanup succeeded
+        - Only proceeds with merge if validation passes
+        """
         fo4 = self.fo4_input.text()
 
         if not fo4 or not os.path.exists(fo4):
@@ -358,9 +696,62 @@ class MainWindow(QMainWindow):
             )
             return
         
-        # Case 2: Mixed merged and unmerged files - warn user
-        if not self._handle_merge_with_mixed_files(fo4):
+        # Case 2: Mixed merged and unmerged files - offer restore and repack
+        mixed_action = self._handle_merge_with_mixed_files(fo4)
+        if mixed_action == 'cancel':
             self.log("Merge cancelled by user.")
+            return
+        elif mixed_action == 'restore_and_merge':
+            self.log("User chose to restore and repack all CC items.")
+            self._pending_merge_after_restore = True
+            self.start_restore()
+            return
+        
+        # Case 3: Validate CC content integrity before starting merge
+        from pathlib import Path
+        data_path = Path(fo4) / "Data"
+        
+        self.log("Checking Creation Club content integrity...")
+        valid_cc, orphaned_cc = self.merger._validate_cc_content_integrity(data_path, self.log)
+        
+        # Handle orphaned content if found
+        if orphaned_cc:
+            result = self._handle_orphaned_cc_content(fo4, orphaned_cc)
+            
+            if result == 'quit':
+                # User chose to quit
+                return
+            elif result == 'continue':
+                # Orphaned content was deleted, refresh validation
+                self.log("Re-validating after deletion...")
+                valid_cc, orphaned_cc = self.merger._validate_cc_content_integrity(data_path, self.log)
+                
+                if orphaned_cc:
+                    QMessageBox.critical(
+                        self,
+                        "Validation Failed",
+                        "Orphaned content still detected after deletion. Please check manually."
+                    )
+                    return
+                
+                if not valid_cc:
+                    QMessageBox.information(
+                        self,
+                        "No Content to Merge",
+                        "No valid Creation Club content remains after cleanup."
+                    )
+                    return
+            else:
+                # Error or cancellation
+                return
+        
+        # Verify we have content to merge
+        if not valid_cc:
+            QMessageBox.information(
+                self,
+                "No Content Found",
+                "No Creation Club content found to merge."
+            )
             return
 
         self._disable_buttons()
@@ -372,6 +763,20 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def start_restore(self):
+        """Initiate the backup restore process.
+        
+        Restores the most recent backup of Creation Club files, reversing a previous
+        merge operation. The restore includes:
+        - Original individual CC BA2 archives
+        - Original CC plugin files (ESL/ESP/ESM)
+        - Removal of merged CCPacked archives
+        - Updating plugins.txt
+        
+        The actual restore operation runs in a background thread (RestoreWorker)
+        to keep the UI responsive.
+        
+        Validates the Fallout 4 path before starting the restore.
+        """
         fo4 = self.fo4_input.text()
         if not fo4 or not os.path.exists(fo4):
             QMessageBox.warning(self, "Error", "Invalid Fallout 4 path.")
@@ -385,17 +790,46 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
 
-    def on_finished(self, success, message):
+    def on_finished(self, success: bool, message: str) -> None:
+        """Handle completion of background worker operations.
+        
+        Called when merge or restore worker completes. Re-enables UI buttons
+        and displays appropriate success or error message to the user.
+        
+        If a restore operation completed successfully and a merge was pending
+        (from the restore+repack workflow), automatically starts the merge.
+        
+        Args:
+            success (bool): True if operation succeeded, False if it failed
+            message (str): Success or error message to display
+        """
         self.merge_btn.setEnabled(True)
         self.restore_btn.setEnabled(True)
+        
         if success:
-            QMessageBox.information(self, "Success", message)
-            self.log(f"DONE: {message}")
+            # Check if this was a restore operation with pending merge
+            if self._pending_merge_after_restore:
+                self._pending_merge_after_restore = False
+                self.log(f"Restore complete: {message}")
+                self.log("Now starting merge of all CC content...")
+                # Don't show success dialog yet, proceed to merge
+                self.start_merge()
+            else:
+                QMessageBox.information(self, "Success", message)
+                self.log(f"DONE: {message}")
         else:
+            # Clear pending merge on error
+            self._pending_merge_after_restore = False
             QMessageBox.critical(self, "Error", message)
             self.log(f"ERROR: {message}")
 
 if __name__ == "__main__":
+    """Application entry point.
+    
+    Creates the Qt application, displays the main window, and starts the
+    event loop. The application continues running until the user closes
+    the window or quits the application.
+    """
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

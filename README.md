@@ -104,14 +104,14 @@ If auto-detection fails:
 
 | Source Files | Output Archive | Notes |
 | ------------- | ---------------- | ------- |
-| `cc* - Main.ba2` | `CCPacked - Main.ba2` | Compressed, meshes/scripts/etc |
+| `cc* - Main.ba2` | `CCPacked_Main - Main.ba2` | Compressed, meshes/scripts/etc |
 | `cc* - Textures.ba2` | `CCPacked_Textures1 - Textures.ba2`, etc. | Auto-split at 7GB, each with own ESL |
 | Sound files (.xwm, .wav, .fuz, .lip) | `CCPacked_Sounds - Main.ba2` | Uncompressed to prevent audio issues |
 | STRINGS files | `Data/Strings/*.STRINGS` | Extracted as loose files |
 
 **Output ESL Plugins:**
 
-- `CCPacked.esl` - Light master for main archive
+- `CCPacked_Main.esl` - Light master for main archive
 - `CCPacked_Textures1.esl`, `CCPacked_Textures2.esl`, etc. - One per texture archive
 - `CCPacked_Sounds.esl` - Light master for audio archive
 
