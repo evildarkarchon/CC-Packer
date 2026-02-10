@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         self.detect_paths()
 
     def init_ui(self):
-        self.setWindowTitle("CC Packer v2.0")
+        self.setWindowTitle("CC Packer v2.1.0")
         self.setMinimumSize(600, 500)
 
         central_widget = QWidget()

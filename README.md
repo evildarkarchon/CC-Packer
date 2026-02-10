@@ -3,7 +3,7 @@
 A simple, standalone tool to merge Fallout 4 Creation Club content into unified archives, reducing plugin count and improving load times.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v2.0)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v2.1)
 
 ## ✨ Features
 
@@ -104,14 +104,14 @@ If auto-detection fails:
 
 | Source Files | Output Archive | Notes |
 | ------------- | ---------------- | ------- |
-| `cc* - Main.ba2` | `CCPacked - Main.ba2` | Compressed, meshes/scripts/etc |
+| `cc* - Main.ba2` | `CCPacked_Main - General.ba2` | Compressed, meshes/scripts/etc |
 | `cc* - Textures.ba2` | `CCPacked_Textures1 - Textures.ba2`, etc. | Auto-split at 7GB, each with own ESL |
 | Sound files (.xwm, .wav, .fuz, .lip) | `CCPacked_Sounds - Main.ba2` | Uncompressed to prevent audio issues |
 | STRINGS files | `Data/Strings/*.STRINGS` | Extracted as loose files |
 
 **Output ESL Plugins:**
 
-- `CCPacked.esl` - Light master for main archive
+- `CCPacked_Main.esl` - Light master for main archive
 - `CCPacked_Textures1.esl`, `CCPacked_Textures2.esl`, etc. - One per texture archive
 - `CCPacked_Sounds.esl` - Light master for audio archive
 
@@ -151,6 +151,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📋 Version History
 
+- **v2.1.0** (February 10, 2026) - Fixed ESL archive loading issue - each ESL now only activates its own archive
 - **v2.0** (January 30, 2026) - Standalone operation with bundled BSArch, no more Archive2/Creation Kit requirement
 - **v1.0.6** (November 29, 2025) - Fixed texture archives not loading (each texture archive now gets its own ESL)
 - **v1.0.5** (November 29, 2025) - Disabled post-merge archive validation

@@ -5,6 +5,19 @@ All notable changes to CC-Packer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-10
+
+### Fixed
+
+- **ESL Archive Loading Issue**: Fixed bug where the main ESL file would cause all archive files (textures, sounds) to load simultaneously. Each ESL now activates only its own archive.
+- **Archive Naming Conflicts**: Renamed main archive to use unique identifier to prevent Fallout 4 from auto-loading related archives
+
+### Changed
+
+- **Main Archive Naming**: Renamed from `CCPacked - Main.ba2` to `CCPacked_Main - General.ba2`
+- **Main ESL Naming**: Renamed from `CCPacked.esl` to `CCPacked_Main.esl`
+- **Archive Type**: Changed main archive type from "Main" to "General" for clarity
+
 ## [2.0.0] - 2026-01-30
 
 ### Added
