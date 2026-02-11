@@ -33,6 +33,7 @@ License: See LICENSE file
 """
 
 import os
+import re
 import shutil
 import subprocess
 import logging
@@ -41,6 +42,11 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable, Dict, Any, List, Tuple
+
+# Regex pattern for Creation Club file naming convention.
+# Format: cc<vendor>FO4<digits><sep><name>
+# Examples: ccBGSFO4001-PipBoy.esl, ccvltfo4001-homes.esm, cctosfo4002_neonflats.esm
+CC_FILENAME_PATTERN = re.compile(r'^cc[a-z]{2,}fo4\d+[-_]', re.IGNORECASE)
 
 # Note: strings_generator is no longer used - original STRINGS files are preserved
 # inside the merged BA2 archives, and our ESL placeholder doesn't need localization.
@@ -711,8 +717,10 @@ class CCMerger:
         """
         cc_plugins: List[Path] = []
         for ext in ['*.esl', '*.esp', '*.esm']:
-            # Find all CC plugins (starting with 'cc')
-            cc_plugins.extend([f for f in data_path.glob(f'cc{ext}') if not f.name.lower().startswith('ccpacked')])
+            cc_plugins.extend([
+                f for f in data_path.glob(f'cc{ext}')
+                if CC_FILENAME_PATTERN.match(f.name)
+            ])
         return cc_plugins
 
     def _validate_cc_content_integrity(self, data_path: Path, progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[List[str], List[str]]:

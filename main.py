@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                             QTextEdit, QFileDialog, QMessageBox)
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
-from merger import CCMerger
+from merger import CCMerger, CC_FILENAME_PATTERN
 
 
 class MergeWorker(QThread):
@@ -274,10 +274,10 @@ class MainWindow(QMainWindow):
         
         # Get all cc*.ba2 files
         all_cc_files = list(data_path.glob("cc*.ba2"))
-        
-        # Separate into CCPacked and other
+
+        # Separate into CCPacked and other (using CC naming convention regex)
         ccmerged_files = [f.name for f in all_cc_files if f.name.lower().startswith("ccpacked")]
-        other_cc_files = [f.name for f in all_cc_files if not f.name.lower().startswith("ccpacked")]
+        other_cc_files = [f.name for f in all_cc_files if CC_FILENAME_PATTERN.match(f.name)]
         
         # Count backups
         backup_count = 0
