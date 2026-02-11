@@ -45,7 +45,7 @@ from typing import Optional, Callable, Dict, Any, List, Tuple
 
 # Regex pattern for Creation Club file naming convention.
 # Format: cc<vendor>FO4<digits><sep><name>
-# Examples: ccBGSFO4001-PipBoy.esl, ccvltfo4001-homes.esm, cctosfo4002_neonflats.esm
+# Examples: ccbgsfo4001-pipboy(black).esl, ccvltfo4001-homes.esm, cctosfo4002_neonflats.esm
 CC_FILENAME_PATTERN = re.compile(r'^cc[a-z]{2,}fo4\d+[-_]', re.IGNORECASE)
 
 # Note: strings_generator is no longer used - original STRINGS files are preserved
