@@ -213,7 +213,8 @@ class CCMerger:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=str(cwd) if cwd else None
+                cwd=str(cwd) if cwd else None,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             if result.returncode != 0:
@@ -471,7 +472,8 @@ class CCMerger:
                 [bsarch_path, str(ba2_path), "-list"],
                 capture_output=True,
                 text=True,
-                timeout=120  # 2 minute timeout for listing
+                timeout=120,  # 2 minute timeout for listing
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             if result.returncode != 0:
