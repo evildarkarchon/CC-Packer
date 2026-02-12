@@ -3,7 +3,7 @@
 A simple, standalone tool to merge Fallout 4 Creation Club content into unified archives, reducing plugin count and improving load times.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v3.0.0)
+[![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](https://github.com/jturnley/CC-Packer/releases/tag/v3.1.0)
 
 ## ✨ Features
 
@@ -36,7 +36,27 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 - **NEW**: Full localization support for enhanced compatibility
 - **STRINGS Generation**: Automatic extraction and merging of localized text
 
-## 🆕 What's New in v3.0.0
+## 🆕 What's New in v3.1.0
+
+### Accurate CC Detection via CCList.txt
+
+- **Official CC Database**: CC detection now uses the included `CCList.txt` file to identify only official Creation Club items
+- **Reduced False Positives**: Eliminates incorrect detection of non-CC mods that match CC naming patterns
+- **Improved Reliability**: 100% accuracy in identifying real Creation Club content
+
+### Background Processing Improvements
+
+- **Silent Merging**: Packing routine now runs completely in the background without popup windows
+- **Cleaner Interface**: All progress is shown in the main GUI window
+- **Code Optimizations**: Performance improvements and enhanced code documentation
+
+### Automatic Append-Like Functionality
+
+- **Mixed Content Detection**: Automatically detects when packed and unpacked CC content coexist
+- **One-Click Update**: Clicking Merge with mixed content automatically restores from backup and repacks all items together
+- **Seamless Workflow**: Add new CC content and click Merge again - no manual steps needed
+
+## Previous Release: v3.0.0
 
 ### Content Integrity & Validation
 
@@ -79,7 +99,7 @@ A simple, standalone tool to merge Fallout 4 Creation Club content into unified 
 
 ### Option 1: Download Binary (Recommended)
 
-1. Download `CC-Packer_v3.0.0.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
+1. Download `CC-Packer_v3.1.0.zip` from [Releases](https://github.com/jturnley/CC-Packer/releases)
 2. Extract anywhere on your PC
 3. Run `CCPacker.exe` - no installation needed!
 
@@ -159,10 +179,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/jturnley/CC-Packer/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/jturnley/CC-Packer/discussions)
-- **Release Notes**: [View v3.0.0 Release Notes](RELEASE_NOTES_v3.0.0.md)
+- **Release Notes**: [View v3.1.0 Release Notes](RELEASE_NOTES_v3.1.0.md)
 
 ## 📋 Version History
 
+- **v3.1.0** (February 12, 2026) - CC detection via CCList.txt, background processing improvements, automatic restore & repack for mixed content
 - **v3.0.0** (February 10, 2026) - Content integrity validation, orphaned CC detection, automatic cleanup, plugin-first detection
 - **v2.0** (January 30, 2026) - Standalone operation with bundled BSArch, no more Archive2/Creation Kit requirement
 - **v1.0.6** (November 29, 2025) - Fixed texture archives not loading (each texture archive now gets its own ESL)

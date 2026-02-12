@@ -13,13 +13,14 @@ Classes:
     MainWindow: Main application window with UI and controls
 
 Author: CC Packer Development Team
-Version: 3.0.0
+Version: 3.1.0
 License: See LICENSE file
 """
 
 import sys
 import os
 import ctypes
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
@@ -146,6 +147,10 @@ class MainWindow(QMainWindow):
         restore_btn (QPushButton): Button to start restore operation
         log_output (QTextEdit): Text area for displaying log messages
         worker (QThread): Currently running background worker thread
+        _pending_merge_after_restore (bool): Internal flag that is set to True
+            when a restore operation is triggered as part of the automatic
+            "restore then repack" workflow. When True, on_finished() will
+            automatically start a merge after the restore completes successfully.
     """
     
     def __init__(self):
@@ -155,7 +160,7 @@ class MainWindow(QMainWindow):
         attempts to auto-detect the Fallout 4 installation path.
         """
         super().__init__()
-        self.setWindowTitle("CC-Packer v3.0.0")
+        self.setWindowTitle("CC-Packer v3.1.0")
         self.setGeometry(100, 100, 800, 600)
         self.merger = CCMerger()
         self.worker = None
@@ -174,7 +179,7 @@ class MainWindow(QMainWindow):
         
         The UI uses PyQt6 layouts for responsive design.
         """
-        self.setWindowTitle("CC Packer v3.0.0")
+        self.setWindowTitle("CC Packer v3.1.0")
         self.setMinimumSize(600, 500)
 
         central_widget = QWidget()
@@ -192,7 +197,7 @@ class MainWindow(QMainWindow):
         fo4_layout = QHBoxLayout()
         self.fo4_input = QLineEdit()
         fo4_btn = QPushButton("Browse")
-        fo4_btn.clicked.connect(self.browse_fo4)
+        fo4_btn.clicked.connect(self.browse_fo4)  # type: ignore
         fo4_layout.addWidget(self.fo4_input)
         fo4_layout.addWidget(fo4_btn)
         layout.addLayout(fo4_layout)
@@ -201,11 +206,11 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         self.merge_btn = QPushButton("Merge CC Content")
         self.merge_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
-        self.merge_btn.clicked.connect(self.start_merge)
+        self.merge_btn.clicked.connect(self.start_merge)  # type: ignore
         
         self.restore_btn = QPushButton("Restore Backup")
         self.restore_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold; padding: 8px;")
-        self.restore_btn.clicked.connect(self.start_restore)
+        self.restore_btn.clicked.connect(self.start_restore)  # type: ignore
         
         btn_layout.addWidget(self.merge_btn)
         btn_layout.addWidget(self.restore_btn)
@@ -256,12 +261,11 @@ class MainWindow(QMainWindow):
             but they track 'CCPacked' files in v2.0+. Also handles legacy 'CCMerged'
             files from v1.x for upgrade scenarios.
         """
-        from pathlib import Path
         data_path = Path(fo4_path) / "Data"
         backup_dir = data_path / "CC_Backup"
         
         # Default empty result
-        result = {
+        result: Dict[str, Any] = {
             'has_ccmerged': False,
             'has_other_cc': False,
             'backup_count': 0,
@@ -572,16 +576,36 @@ class MainWindow(QMainWindow):
     def _handle_orphaned_cc_content(self, fo4_path: str, orphaned_names: List[str]) -> Optional[str]:
         """Show warning dialog for orphaned CC content and handle user choice.
         
+        When CC content validation detects incomplete items (plugins missing their
+        BA2 archives), this method displays a rich-text warning dialog explaining
+        the situation and offering three options:
+        
+        1. **Delete and Cancel**: Deletes the orphaned files, then stops so the
+           user can re-download the content from the Creations menu in-game.
+        2. **Delete and Continue**: Deletes the orphaned files and proceeds with
+           merging the remaining valid CC content.
+        3. **Cancel Without Changes**: Makes no modifications and aborts the merge.
+        
+        The dialog includes a clickable link to the CC Packer Nexus Mods page
+        for more information about the orphaned content issue.
+        
+        If deletion is selected but fails (e.g., due to permissions), an error
+        dialog is shown and the method returns None to abort the merge.
+        
         Args:
-            fo4_path: Path to Fallout 4 installation
-            orphaned_names: List of CC base names that are missing BA2 files
+            fo4_path (str): Path to the Fallout 4 installation directory. Used
+                to locate the Data folder for file deletion.
+            orphaned_names (List[str]): List of CC base names (without extension)
+                that are missing required BA2 archive files.
             
         Returns:
-            'continue' - Continue with merge (orphaned content deleted)
-            'quit' - User chose to quit
-            None - User cancelled or error occurred
+            Optional[str]: One of the following:
+                - 'continue': Orphaned content was successfully deleted; caller
+                  should re-validate and proceed with merging.
+                - 'quit': User chose to stop (with or without deletion).
+                - None: An error occurred during deletion or user cancelled;
+                  caller should abort the merge.
         """
-        from pathlib import Path
         
         # Format the list of orphaned items with HTML for better visibility
         orphaned_list = "<br>".join([f"&nbsp;&nbsp;&nbsp;&nbsp;<b>{name}</b>" for name in orphaned_names])
@@ -614,7 +638,7 @@ class MainWindow(QMainWindow):
         # Add custom buttons
         delete_quit_btn = msg_box.addButton("Delete Orphaned CC Content And Cancel Packing", QMessageBox.ButtonRole.DestructiveRole)
         delete_continue_btn = msg_box.addButton("Delete Orphaned CC Content and Continue", QMessageBox.ButtonRole.AcceptRole)
-        _quit_btn = msg_box.addButton("Make No Changes andCancel Packing Now", QMessageBox.ButtonRole.RejectRole)
+        _quit_btn = msg_box.addButton("Make No Changes and Cancel Packing Now", QMessageBox.ButtonRole.RejectRole)
         
         msg_box.exec()
         clicked = msg_box.clickedButton()
@@ -625,7 +649,7 @@ class MainWindow(QMainWindow):
         if clicked == delete_quit_btn or clicked == delete_continue_btn:
             # Delete orphaned content
             self.log("Deleting orphaned Creation Club content...")
-            success, message = self.merger._delete_orphaned_cc_content(
+            success, message = self.merger.delete_orphaned_cc_content(
                 data_path, orphaned_names, self.log
             )
             
@@ -680,12 +704,33 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Invalid Fallout 4 path.")
             return
 
-        # Validate CC content integrity FIRST (before checking merge status)
-        from pathlib import Path
         data_path = Path(fo4) / "Data"
+
+        # Check for mixed content FIRST - if CCPacked archives exist alongside
+        # unmerged CC files, we must restore backup before validating integrity.
+        # Otherwise, validation will see all CC plugins as "orphaned" because
+        # their individual BA2 files were packed into CCPacked archives.
+        status = self._check_existing_backup(fo4)
         
+        # Case 1: Only merged files exist - can't merge
+        if status['has_ccmerged'] and not status['has_other_cc']:
+            QMessageBox.information(
+                self,
+                "All CC Content Already Packed",
+                "All CC Content is already packed!"
+            )
+            return
+        
+        # Case 2: Mixed merged and unmerged files - restore first, then re-merge
+        if status['has_ccmerged'] and status['has_other_cc']:
+            self.log("Mixed CC content detected. Restoring backup and repacking all CC items...")
+            self._pending_merge_after_restore = True
+            self.start_restore()
+            return
+        
+        # Now validate CC content integrity (safe to do after mixed-content check)
         self.log("Checking Creation Club content integrity...")
-        valid_cc, orphaned_cc = self.merger._validate_cc_content_integrity(data_path, self.log)
+        valid_cc, orphaned_cc = self.merger.validate_cc_content_integrity(data_path, self.log)
         
         # Handle orphaned content if found
         if orphaned_cc:
@@ -697,7 +742,7 @@ class MainWindow(QMainWindow):
             elif result == 'continue':
                 # Orphaned content was deleted, refresh validation
                 self.log("Re-validating after deletion...")
-                valid_cc, orphaned_cc = self.merger._validate_cc_content_integrity(data_path, self.log)
+                valid_cc, orphaned_cc = self.merger.validate_cc_content_integrity(data_path, self.log)
                 
                 if orphaned_cc:
                     QMessageBox.critical(
@@ -718,33 +763,6 @@ class MainWindow(QMainWindow):
                 # Error or cancellation
                 return
         
-        # Check current state and handle appropriately
-        status = self._check_existing_backup(fo4)
-        
-        # Case 1: Only merged files exist - can't merge
-        if status['has_ccmerged'] and not status['has_other_cc']:
-            QMessageBox.information(
-                self,
-                "All Files Merged",
-                "All Creation Club files are already merged.\n\n"
-                "To merge additional CC files:\n"
-                "1. Click 'Restore Backup'\n"
-                "2. Add new CC files to Data folder\n"
-                "3. Click 'Merge CC Content' again"
-            )
-            return
-        
-        # Case 2: Mixed merged and unmerged files - offer restore and repack
-        mixed_action = self._handle_merge_with_mixed_files(fo4)
-        if mixed_action == 'cancel':
-            self.log("Merge cancelled by user.")
-            return
-        elif mixed_action == 'restore_and_merge':
-            self.log("User chose to restore and repack all CC items.")
-            self._pending_merge_after_restore = True
-            self.start_restore()
-            return
-        
         # Verify we have content to merge
         if not valid_cc:
             QMessageBox.information(
@@ -758,8 +776,8 @@ class MainWindow(QMainWindow):
         self.log("Starting merge process...")
         
         self.worker = MergeWorker(self.merger, fo4)
-        self.worker.progress.connect(self.log)
-        self.worker.finished.connect(self.on_finished)
+        self.worker.progress.connect(self.log)  # type: ignore
+        self.worker.finished.connect(self.on_finished)  # type: ignore
         self.worker.start()
 
     def start_restore(self):
@@ -786,8 +804,8 @@ class MainWindow(QMainWindow):
         self.log("Starting restore process...")
 
         self.worker = RestoreWorker(self.merger, fo4)
-        self.worker.progress.connect(self.log)
-        self.worker.finished.connect(self.on_finished)
+        self.worker.progress.connect(self.log)  # type: ignore
+        self.worker.finished.connect(self.on_finished)  # type: ignore
         self.worker.start()
 
     def on_finished(self, success: bool, message: str) -> None:

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-02-12
+
+### Added
+
+- **CC List-Based Detection**: CC detection is now limited to files registered in the included `CCList.txt` file, ensuring that only official Creation Club items are identified. This eliminates false positives from non-CC mods that match CC naming patterns.
+- **Automatic Restore & Repack**: When users click the Merge button with a mixture of packed (merged) and unpacked CC content present, CC-Packer automatically detects this state, restores from backup, and re-runs the full packing process with all CC items together. This provides the closest possible equivalent to an "append" function for BA2 archives.
+- **Background Processing**: Packing routine now runs completely in the background without spawning popup windows, resulting in a cleaner and more professional user experience.
+
+### Changed
+
+- **CC Detection Method**: Refactored CC file detection to validate against `CCList.txt` instead of simple filename matching patterns. This provides 100% accuracy in identifying official Creation Club items.
+- **Process Management**: Packing operations now run in background processes with proper I/O redirection, eliminating unwanted console windows during execution.
+
+### Improved
+
+- **Code Quality**: Enhanced documentation and code optimization throughout the application via advanced AI-assisted refactoring.
+- **Stability**: Background process window suppression eliminates potential issues from popup interactions with the GUI.
+- **Workflow**: Mixed packed/unpacked content now has a seamless solution - users can simply add new CC content and click Merge again without manual restoration.
+
+### Technical Details
+
+- Integrated `CCList.txt` as the authoritative source for CC file detection
+- Implemented background process launcher with proper subprocess management
+- Added automatic mixed content detection and conditional restore/repack workflow
+- Code optimizations for improved performance
+
 ## [3.0.0] - 2026-02-10
 
 ### Added

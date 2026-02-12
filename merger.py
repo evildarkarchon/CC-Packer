@@ -28,7 +28,7 @@ Classes:
     CCMerger: Main class that orchestrates all merge/restore operations
 
 Author: CC Packer Development Team
-Version: 2.0
+Version: 3.1.0
 License: See LICENSE file
 """
 
@@ -123,11 +123,61 @@ class CCMerger:
         
         Sets up logging and initializes internal state variables.
         The bsarch.exe path is cached on first use for performance.
+        Loads the CCList.txt file containing all known CC items.
         """
         self.logger = logging.getLogger("CCPacker")
         logging.basicConfig(level=logging.INFO)
         self._last_error_details = None  # Store detailed error info
         self._bsarch_path = None  # Cache bsarch.exe path
+        self._cc_list: set[str] = self._load_cc_list()  # Load known CC items
+
+    def _load_cc_list(self) -> set[str]:
+        """Load the list of known Creation Club items from CCList.txt.
+        
+        Reads the CCList.txt file (containing all official CC items) and creates
+        a set of filenames for quick lookup. This file is used to validate that
+        only actual CC content is detected for merging, preventing files that
+        happen to start with 'cc' from being incorrectly included.
+        
+        The CCList.txt file should be located in the same directory as the
+        application script or in the PyInstaller bundle root.
+        
+        Returns:
+            set: Set of CC filenames (e.g., 'ccBGSFO4001-PipBoy.esl')
+                Empty set if file cannot be loaded.
+        
+        Raises:
+            Does not raise exceptions - returns empty set if file not found,
+            allowing the application to continue with fallback behavior.
+        """
+        try:
+            # Determine the directory containing CCList.txt
+            if getattr(sys, 'frozen', False):
+                # Running as compiled exe
+                base_dir = getattr(sys, '_MEIPASS', Path(sys.executable).parent)
+            else:
+                # Running as script
+                base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+            
+            cc_list_path = Path(base_dir) / "CCList.txt"
+            
+            if not cc_list_path.exists():
+                self.logger.warning(f"CCList.txt not found at {cc_list_path}. Using fallback detection.")
+                return set[str]()
+            
+            cc_set: set[str] = set()
+            with open(cc_list_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:  # Skip empty lines
+                        cc_set.add(line.lower())  # Store lowercase for case-insensitive matching
+            
+            self.logger.info(f"Loaded {len(cc_set)} known CC items from CCList.txt")
+            return cc_set
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to load CCList.txt: {e}. Using fallback detection.")
+            return set[str]()
 
     def _find_bsarch(self) -> str:
         """Find bsarch.exe bundled with the application.
@@ -181,19 +231,33 @@ class CCMerger:
                     timeout: int = 600, cwd: Optional[Path] = None) -> subprocess.CompletedProcess[str]:
         """Run bsarch.exe with comprehensive error handling.
         
+        Central method for all BSArch invocations. Locates the bsarch.exe binary,
+        constructs the full command, and executes it as a subprocess. The subprocess
+        is launched with CREATE_NO_WINDOW to prevent visible console windows from
+        appearing for each operation.
+        
         Args:
-            args: Command line arguments for bsarch
-            operation: Description of operation (e.g., 'unpack', 'pack')
-            archive_name: Name of archive being processed (for error messages)
-            progress_callback: Optional callback for progress messages
-            timeout: Timeout in seconds (default 10 minutes)
-            cwd: Working directory for the command (important for pack operations)
+            args (List[str]): Command line arguments for bsarch (e.g., ['unpack', path, dir])
+            operation (str): Human-readable description of the operation being performed
+                (e.g., 'unpack', 'pack', 'list'). Used in error messages.
+            archive_name (str, optional): Name of the archive being processed. Included
+                in error messages for context. Defaults to None.
+            progress_callback (Callable, optional): Function accepting a string argument,
+                called to report progress messages. Defaults to None.
+            timeout (int): Maximum time in seconds to wait for the command to complete.
+                Defaults to 600 (10 minutes). Increase for very large archives.
+            cwd (Path, optional): Working directory for the subprocess. Critical for
+                pack operations where bsarch uses relative paths. Defaults to None
+                (inherits parent process working directory).
             
         Returns:
-            CompletedProcess on success
+            subprocess.CompletedProcess[str]: The completed process result containing
+                stdout, stderr, and returncode on success.
             
         Raises:
-            BSArchError: On any failure
+            BSArchError: If the process returns a non-zero exit code, times out,
+                the executable is not found, or a permission error occurs. The
+                exception includes detailed context about the failure.
         """
         bsarch_path = self._find_bsarch()
         cmd = [bsarch_path] + args
@@ -207,7 +271,8 @@ class CCMerger:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=str(cwd) if cwd else None
+                cwd=str(cwd) if cwd else None,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             if result.returncode != 0:
@@ -312,16 +377,6 @@ class CCMerger:
             ...     Path('Data/CC_Temp/General')
             ... )
         """
-        """Extract a BA2 archive using bsarch.
-        
-        Args:
-            ba2_path: Path to the BA2 file to extract
-            output_dir: Directory to extract files to
-            progress_callback: Optional callback for progress messages
-            
-        Raises:
-            BSArchError on failure
-        """
         # bsarch unpack <archive> [folder] [-mt]
         args = ["unpack", str(ba2_path), str(output_dir), "-mt"]
         self._run_bsarch(args, operation="unpack", archive_name=ba2_path.name, 
@@ -370,18 +425,6 @@ class CCMerger:
             The archive is created with the '-sse' flag for Fallout 4 compatibility.
             Directory structure is preserved inside the archive.
         """
-        """Create a texture (DX10) BA2 archive using bsarch.
-        
-        Note: Texture archives are always compressed per bsarch requirements.
-        
-        Args:
-            source_dir: Directory containing texture files to pack
-            output_path: Path for the output BA2 file
-            progress_callback: Optional callback for progress messages
-            
-        Raises:
-            BSArchError on failure
-        """
         # Use '.' as source and set cwd to source_dir to avoid path prefix issues
         # bsarch pack <folder> <archive> -fo4dds -z [-mt]
         # Note: -fo4dds requires -z (compression) per bsarch docs
@@ -408,18 +451,6 @@ class CCMerger:
         Note:
             Despite being a General archive type, the '-share' flag ensures no
             compression is applied, which is critical for sound file compatibility.
-        """
-        """Create an uncompressed general BA2 archive for sound files.
-        
-        Note: Sound files should not be compressed for optimal game compatibility.
-        
-        Args:
-            source_dir: Directory containing sound files to pack
-            output_path: Path for the output BA2 file
-            progress_callback: Optional callback for progress messages
-            
-        Raises:
-            BSArchError on failure
         """
         # Use '.' as source and set cwd to source_dir to avoid path prefix issues
         # bsarch pack <folder> <archive> -fo4 [-mt]
@@ -451,21 +482,12 @@ class CCMerger:
             >>> if success:
             ...     print(f"Archive contains {count} files")
         """
-        """Get the list of files in a BA2 archive using bsarch.
-        
-        Args:
-            ba2_path: Path to the BA2 file
-            
-        Returns:
-            Tuple of (success, file_list, file_count, error_message)
-        """
         try:
-            bsarch_path = self._find_bsarch()
-            result = subprocess.run(
-                [bsarch_path, str(ba2_path), "-list"],
-                capture_output=True,
-                text=True,
-                timeout=120  # 2 minute timeout for listing
+            result = self._run_bsarch(
+                [str(ba2_path), "-list"],
+                operation="list",
+                archive_name=ba2_path.name,
+                timeout=120
             )
             
             if result.returncode != 0:
@@ -506,21 +528,33 @@ class CCMerger:
             
             return True, files, file_count, ""
             
-        except subprocess.TimeoutExpired:
-            return False, [], 0, "BSArch timed out listing archive contents"
-        except FileNotFoundError:
-            return False, [], 0, "BSArch not found"
+        except BSArchError as e:
+            return False, [], 0, str(e)
         except Exception as e:
             return False, [], 0, str(e)
 
     def _get_ba2_file_count(self, ba2_path: Path) -> Tuple[bool, int, str]:
-        """Read the file count from a BA2 archive header.
+        """Read the file count directly from a BA2 archive's binary header.
+        
+        Performs a lightweight read of just the first 16 bytes of the BA2 file
+        to extract the file count without invoking BSArch. This is faster than
+        using BSArch's -list command and is used primarily for post-extraction
+        verification.
+        
+        BA2 Header Layout (first 16 bytes):
+            - Bytes 0-3: Magic number ('BTDX')
+            - Bytes 4-7: Version (uint32, little-endian)
+            - Bytes 8-11: Archive type ('GNRL' or 'DX10')
+            - Bytes 12-15: File count (uint32, little-endian)
         
         Args:
-            ba2_path: Path to the BA2 file
+            ba2_path (Path): Path to the BA2 archive file to inspect
             
         Returns:
-            Tuple of (success, file_count, error_message)
+            Tuple[bool, int, str]: A tuple containing:
+                - success (bool): True if the header was read successfully
+                - file_count (int): Number of files recorded in the archive header
+                - error_message (str): Empty string on success, error description on failure
         """
         try:
             with open(ba2_path, 'rb') as f:
@@ -569,16 +603,6 @@ class CCMerger:
             >>> if not ok:
             ...     print(f"Verification failed: {msg}")
         """
-        """Verify that extraction completed by checking file counts.
-        
-        Args:
-            ba2_path: Path to the original BA2 file
-            extract_dir: Directory where files were extracted
-            progress_callback: Optional callback for progress messages
-            
-        Returns:
-            Tuple of (success, error_message)
-        """
         # Use header file count for verification (most reliable)
         success, expected_count, error = self._get_ba2_file_count(ba2_path)
         
@@ -611,12 +635,29 @@ class CCMerger:
                              progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
         """Verify a BA2 archive is valid and not corrupted.
         
+        Performs a multi-level integrity check on a BA2 archive:
+        
+        1. **Existence check**: Confirms the file exists on disk
+        2. **Size check**: Ensures the file is at least 24 bytes (minimum valid header)
+        3. **Magic number**: Verifies the 'BTDX' signature at offset 0
+        4. **Version check**: Validates the BA2 version is 1 (original FO4) or 8 (Next-Gen)
+        5. **Archive type**: Confirms type is 'GNRL' (general) or 'DX10' (textures)
+        6. **Name table**: Verifies the name table offset doesn't exceed file size
+        7. **BSArch validation**: Optionally runs BSArch -list for deeper content validation
+        
+        This method does NOT extract any files — it only reads the header and
+        optionally invokes BSArch to list contents.
+        
         Args:
-            ba2_path: Path to the BA2 file to verify
-            progress_callback: Optional callback for status messages
+            ba2_path (Path): Path to the BA2 archive file to verify
+            progress_callback (Callable, optional): Function to receive status messages
+                during verification. Used to report non-fatal warnings.
             
         Returns:
-            Tuple of (is_valid, message)
+            Tuple[bool, str]: A tuple containing:
+                - is_valid (bool): True if the archive passes all integrity checks
+                - message (str): Human-readable result — verification summary on success,
+                  or a description of the first failure encountered
         """
         if not ba2_path.exists():
             return False, f"Archive not found: {ba2_path.name}"
@@ -701,30 +742,54 @@ class CCMerger:
             >>> for p in plugins:
             ...     print(p.name)  # e.g., 'ccBGSFO4001-PipBoy.esl'
         """
-        """Find all Creation Club plugin files (esl, esp, esm) in Data folder.
-        
-        Args:
-            data_path: Path to Fallout 4/Data directory
-            
-        Returns:
-            List of Path objects for CC plugins found
-        """
         cc_plugins: List[Path] = []
-        for ext in ['*.esl', '*.esp', '*.esm']:
-            # Find all CC plugins (starting with 'cc')
-            cc_plugins.extend([f for f in data_path.glob(f'cc{ext}') if not f.name.lower().startswith('ccpacked')])
+        
+        # If we have a loaded CC list, use it directly for validation
+        if self._cc_list:
+            # Look for files in the CC list that exist in the data directory
+            for cc_filename in self._cc_list:
+                plugin_path = data_path / cc_filename
+                if plugin_path.exists():
+                    cc_plugins.append(plugin_path)
+        else:
+            # Fallback to old behavior if CCList.txt couldn't be loaded
+            # This maintains compatibility but is less precise
+            self.logger.warning("Using fallback CC detection - consider adding CCList.txt")
+            for ext in ['*.esl', '*.esp', '*.esm']:
+                # Find all CC plugins (starting with 'cc')
+                cc_plugins.extend([f for f in data_path.glob(f'cc{ext}') if not f.name.lower().startswith('ccpacked')])
+        
         return cc_plugins
 
-    def _validate_cc_content_integrity(self, data_path: Path, progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[List[str], List[str]]:
+    def validate_cc_content_integrity(self, data_path: Path, progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[List[str], List[str]]:
         """Check if all CC plugins have their required BA2 archives.
         
+        Each Creation Club item consists of a plugin file (.esl/.esp/.esm) and
+        two companion BA2 archives:
+            - '<base_name> - Main.ba2' (meshes, scripts, sounds, etc.)
+            - '<base_name> - Textures.ba2' (DDS texture files)
+        
+        A CC item is considered "valid" (complete) only if both BA2 files exist.
+        A CC item is considered "orphaned" (incomplete) if one or both BA2 files
+        are missing — this typically occurs when the game's built-in download
+        engine fails to fully download the content.
+        
+        Orphaned items cannot be safely merged and should be deleted and
+        re-downloaded from the Creations menu in Fallout 4.
+        
         Args:
-            data_path: Path to Fallout 4/Data directory
-            progress_callback: Optional callback for progress messages
+            data_path (Path): Path to the Fallout 4/Data directory containing
+                CC plugin and BA2 files
+            progress_callback (Callable, optional): Function to receive progress
+                messages. Each CC item is reported with a checkmark (valid) or
+                cross (orphaned) along with which archives are missing.
             
         Returns:
-            Tuple of (valid_cc_names, orphaned_cc_names)
-            where each name is the base CC identifier (e.g., 'ccBGSFO4001')
+            Tuple[List[str], List[str]]: A tuple containing:
+                - valid_cc_names (List[str]): Base names of complete CC items
+                  (e.g., 'ccBGSFO4001-PipBoy(Pip-BoyPack01)')
+                - orphaned_cc_names (List[str]): Base names of incomplete CC items
+                  that are missing one or both BA2 archives
         """
         cc_plugins = self._find_cc_plugins(data_path)
         
@@ -760,16 +825,36 @@ class CCMerger:
         
         return valid_cc, orphaned_cc
 
-    def _delete_orphaned_cc_content(self, data_path: Path, orphaned_cc_names: List[str], progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
-        """Delete all files associated with orphaned CC content.
+    def delete_orphaned_cc_content(self, data_path: Path, orphaned_cc_names: List[str], progress_callback: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
+        """Delete all files associated with orphaned (incomplete) CC content.
+        
+        Removes plugin files and any remaining BA2 archives for CC items that
+        were identified as incomplete by validate_cc_content_integrity(). This
+        cleans up partially-downloaded content that would otherwise cause issues
+        or instability in the game.
+        
+        For each orphaned CC base name, the following files are deleted if they
+        exist:
+            - '<base_name>.esl', '<base_name>.esp', '<base_name>.esm' (plugin files)
+            - '<base_name> - Main.ba2' (main archive, if present)
+            - '<base_name> - Textures.ba2' (texture archive, if present)
+        
+        The method is fault-tolerant: if some files cannot be deleted (e.g., due
+        to permissions), it continues with the remaining files and reports all
+        failures in the return message.
         
         Args:
-            data_path: Path to Fallout 4/Data directory
-            orphaned_cc_names: List of base CC names to delete (e.g., ['ccBGSFO4001-PipBoy(Pip-BoyPack01)'])
-            progress_callback: Optional callback for progress messages
+            data_path (Path): Path to the Fallout 4/Data directory
+            orphaned_cc_names (List[str]): List of base CC names to delete
+                (e.g., ['ccBGSFO4001-PipBoy(Pip-BoyPack01)']). These should come
+                from the orphaned list returned by validate_cc_content_integrity().
+            progress_callback (Callable, optional): Function to receive per-file
+                deletion status messages.
             
         Returns:
-            Tuple of (success: bool, message: str)
+            Tuple[bool, str]: A tuple containing:
+                - success (bool): True if all deletions succeeded, False if any failed
+                - message (str): Summary of deletions performed and any failures
         """
         if not orphaned_cc_names:
             return True, "No orphaned content to delete."
@@ -887,7 +972,7 @@ class CCMerger:
 
         # 1. Validate CC Content Integrity - Check for plugins and their BA2 files
         progress_callback("Validating Creation Club content integrity...")
-        valid_cc, orphaned_cc = self._validate_cc_content_integrity(data_path, progress_callback)
+        valid_cc, orphaned_cc = self.validate_cc_content_integrity(data_path, progress_callback)
         
         # Note: Orphaned content should have been handled by UI before this point
         # If there are still orphaned items, skip them and continue with valid ones
@@ -1099,18 +1184,22 @@ class CCMerger:
             
             progress_callback(f"Repacking Textures {texture_num}/{len(groups)}: {archive_name}")
             
-            # Move files to temp split dir
-            split_dir = temp_dir / f"split_{idx}"
-            split_dir.mkdir(exist_ok=True)
-            
-            for f_path in group:
-                rel = f_path.relative_to(textures_dir)
-                dest = split_dir / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(f_path, dest)
+            # If only one group, pack directly from textures_dir to avoid redundant copy
+            if len(groups) == 1:
+                pack_dir = textures_dir
+            else:
+                # Multiple groups: copy files to temp split dir
+                pack_dir = temp_dir / f"split_{idx}"
+                pack_dir.mkdir(exist_ok=True)
+                
+                for f_path in group:
+                    rel = f_path.relative_to(textures_dir)
+                    dest = pack_dir / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(f_path, dest)
             
             try:
-                self._pack_texture_archive(split_dir, target_path, progress_callback)
+                self._pack_texture_archive(pack_dir, target_path, progress_callback)
                 created_archives.append(target_path)
             except BSArchError as e:
                 return {"success": False, "error": str(e)}
@@ -1262,7 +1351,20 @@ class CCMerger:
             
         return {"success": True}
 
-    def _get_plugins_txt(self):
+    def _get_plugins_txt(self) -> Optional[Path]:
+        """Get the path to Fallout 4's plugins.txt configuration file.
+        
+        The plugins.txt file lives in the user's local application data directory
+        at: %LOCALAPPDATA%/Fallout4/plugins.txt
+        
+        This file controls which plugin files (.esl, .esp, .esm) the game loads
+        on startup. Entries prefixed with '*' are enabled. CC Packer adds its
+        merged ESL entries here during merge and removes them during restore.
+        
+        Returns:
+            Path: Absolute path to plugins.txt, or None if the LOCALAPPDATA
+                environment variable is not set (should not occur on Windows).
+        """
         local_app_data = os.environ.get('LOCALAPPDATA')
         if not local_app_data:
             return None
